@@ -6,8 +6,9 @@ const prefix = (() => {
   return cleaned ? `/${cleaned}` : "";
 })();
 
-/** Absolute URL the auth email should return to. */
-export const authCallbackUrl = `${window.location.origin}${prefix}/auth/callback`;
+/** Keep production auth on TicketHub; use the current origin for local development. */
+const authOrigin = import.meta.env.PROD ? "https://tickets.tribedala.com" : window.location.origin;
+export const authCallbackUrl = `${authOrigin}${prefix}/auth/callback`;
 
 /**
  * Only internal, same-origin destinations are allowed after an ordinary sign-in.
