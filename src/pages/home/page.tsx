@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
 import { DataError, DataLoading } from "@/components/feature/DataStates";
@@ -5,6 +6,7 @@ import { useEvents } from "@/hooks/useEvents";
 import { usePlatformStats } from "@/hooks/usePlatformStats";
 import { formatCompactStat } from "@/lib/statsApi";
 import { formatNumber } from "@/lib/helpers";
+import { ORGANIZATION_SCHEMA, SITE_URL, setPageSeo } from "@/lib/seo";
 import {
   CategoryStrip,
   CommissionExplainer,
@@ -21,6 +23,29 @@ import {
 export default function HomePage() {
   const { events, loading, error, reload } = useEvents();
   const { stats, loading: statsLoading } = usePlatformStats();
+
+  useEffect(() => {
+    setPageSeo({
+      title: "Kenya Events, Concerts & Festival Tickets | TicketHub",
+      description:
+        "Find concerts, festivals, comedy, sports and cultural events across Kenya. Compare ticket prices and book securely with TicketHub by Tribedala.",
+      path: "/",
+      structuredData: [
+        ORGANIZATION_SCHEMA,
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "TicketHub by Tribedala",
+          url: SITE_URL,
+          potentialAction: {
+            "@type": "SearchAction",
+            target: `${SITE_URL}/discover?q={search_term_string}`,
+            "query-input": "required name=search_term_string",
+          },
+        },
+      ],
+    });
+  }, []);
 
   const statCards = stats
     ? [

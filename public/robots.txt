@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /admin
+Disallow: /auth/
+Disallow: /checkout/
+Disallow: /favorites
+Disallow: /gate-login
+Disallow: /organizer/
+Disallow: /scanner
+Disallow: /signin
+Disallow: /signup
+Disallow: /tickets
+
+Sitemap: https://tickets.tribedala.com/sitemap.xml

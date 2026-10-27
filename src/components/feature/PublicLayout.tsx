@@ -326,6 +326,7 @@ function Footer() {
             title="Explore"
             links={[
               { label: "All events", to: "/discover" },
+              { label: "Events by county", to: "/events-in-kenya" },
               { label: "Concerts", to: "/discover?category=Concerts" },
               { label: "Festivals", to: "/discover?category=Festivals" },
               { label: "Comedy nights", to: "/discover?category=Comedy" },

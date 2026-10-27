@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
@@ -9,6 +9,8 @@ import { cn, formatEventDate, formatKsh } from "@/lib/helpers";
 import { tierLegend, tierTheme } from "@/lib/tierTheme";
 import { events } from "@/mocks/events";
 import { organizers } from "@/mocks/organizers";
+import { useEvent } from "@/hooks/useEvents";
+import { SITE_URL, setPageSeo } from "@/lib/seo";
 import { useApp } from "@/store/AppStore";
 
 const shortDate = (iso: string) =>
@@ -18,9 +20,68 @@ export default function EventDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { pushToast, favorites, toggleFavorite } = useApp();
-  const event = events.find((item) => item.slug === slug);
+  const { event: liveEvent } = useEvent(slug);
+  const event = liveEvent ?? events.find((item) => item.slug === slug);
   const [selectedTier, setSelectedTier] = useState(event?.tiers[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    if (!event) return;
+    const path = `/events/${event.slug}`;
+    setPageSeo({
+      title: `${event.title} Tickets in ${event.city} | TicketHub`,
+      description: `${event.description.slice(0, 130).trim()} Book ${event.title} tickets in ${event.city}, Kenya from KSh ${event.priceFrom.toLocaleString("en-KE")} on TicketHub.`,
+      path,
+      image: event.image || undefined,
+      type: "event",
+      structuredData: [
+        {
+          "@context": "https://schema.org",
+          "@type": "Event",
+          name: event.title,
+          description: event.description,
+          url: new URL(path, SITE_URL).href,
+          image: event.image ? [event.image] : undefined,
+          startDate: `${event.date}T${event.startTime || "18:00"}:00+03:00`,
+          endDate: `${event.endDate}T${event.endTime || event.startTime || "23:00"}:00+03:00`,
+          eventStatus: "https://schema.org/EventScheduled",
+          eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+          location: {
+            "@type": "Place",
+            name: event.venue,
+            address: {
+              "@type": "PostalAddress",
+              streetAddress: event.address,
+              addressLocality: event.city,
+              addressRegion: event.county,
+              addressCountry: "KE",
+            },
+          },
+          organizer: { "@type": "Organization", name: event.organizerName, url: SITE_URL },
+          offers: event.tiers.map((tier) => ({
+            "@type": "Offer",
+            name: tier.name,
+            price: tier.price,
+            priceCurrency: "KES",
+            availability:
+              tier.quantity > tier.sold
+                ? "https://schema.org/InStock"
+                : "https://schema.org/SoldOut",
+            url: `${new URL(path, SITE_URL).href}#tickets`,
+          })),
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+            { "@type": "ListItem", position: 2, name: "Events", item: `${SITE_URL}/discover` },
+            { "@type": "ListItem", position: 3, name: event.title, item: new URL(path, SITE_URL).href },
+          ],
+        },
+      ],
+    });
+  }, [event]);
 
   const organizer = organizers.find((item) => item.id === event?.organizerId);
   const similar = useMemo(

@@ -1,6 +1,30 @@
 {
   "rewrites": [
     {
+      "source": "/discover",
+      "destination": "/discover.html"
+    },
+    {
+      "source": "/how-it-works",
+      "destination": "/how-it-works.html"
+    },
+    {
+      "source": "/events-in-kenya",
+      "destination": "/events-in-kenya.html"
+    },
+    {
+      "source": "/events/:slug",
+      "destination": "/events/:slug.html"
+    },
+    {
+      "source": "/events-in/:county",
+      "destination": "/events-in/:county.html"
+    },
+    {
+      "source": "/events/category/:category",
+      "destination": "/events/category/:category.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

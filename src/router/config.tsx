@@ -2,6 +2,7 @@ import type { RouteObject } from "react-router-dom";
 import HomePage from "@/pages/home/page";
 import HowItWorksPage from "@/pages/how-it-works/page";
 import DiscoverPage from "@/pages/discover/page";
+import SeoLandingPage, { CountyDirectoryPage } from "@/pages/discover/SeoLandingPage";
 import EventDetailPage from "@/pages/events/detail/page";
 import CheckoutPage from "@/pages/checkout/page";
 import MyTicketsPage from "@/pages/tickets/page";
@@ -39,6 +40,9 @@ const routes: RouteObject[] = [
   { path: "/", element: <HomePage /> },
   { path: "/how-it-works", element: <HowItWorksPage /> },
   { path: "/discover", element: <DiscoverPage /> },
+  { path: "/events-in-kenya", element: <CountyDirectoryPage /> },
+  { path: "/events-in/:countySlug", element: <SeoLandingPage /> },
+  { path: "/events/category/:categorySlug", element: <SeoLandingPage /> },
   { path: "/events/:slug", element: <EventDetailPage /> },
   { path: "/checkout/:slug", element: <CheckoutPage /> },
   { path: "/tickets", element: <MyTicketsPage /> },

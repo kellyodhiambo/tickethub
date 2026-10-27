@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:sitemap": "node scripts/generate-sitemap.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postbuild": "npm run build:sitemap"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
