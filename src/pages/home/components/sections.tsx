@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { EventItem } from "@/types";
 import { cn, formatKsh } from "@/lib/helpers";
 import { Badge, Button, SectionTitle } from "@/components/base/ui";
 import EventCard from "@/components/feature/EventCard";
 import { eventCategories, cities } from "@/mocks/events";
-import { organizers } from "@/mocks/organizers";
+import { supabase } from "@/lib/supabase";
 import TrendingPanel from "./TrendingPanel";
 import HeroBackdrop from "./HeroBackdrop";
 
@@ -60,8 +60,8 @@ export function HomeHero({ trending = [] }: { trending?: EventItem[] }) {
             style={{ animationDelay: "200ms" }}
             className="mt-2.5 hidden max-w-xl animate-fade-up text-[13px] leading-relaxed text-white/70 sm:block sm:text-base"
           >
-            Discover events across Nairobi, Kisumu, Mombasa, Nakuru and Eldoret. Pay securely with
-            M-Pesa, get your QR ticket the moment payment clears, and walk straight in at the gate.
+            Discover events across Kenya, keep your tickets in one account, and scan in at the gate.
+            Ticket payment collection is being connected.
           </p>
 
           <div
@@ -86,9 +86,9 @@ export function HomeHero({ trending = [] }: { trending?: EventItem[] }) {
 
           <div className="mt-7 hidden flex-wrap items-center gap-x-6 gap-y-3 text-[11px] text-white/60 sm:flex">
             {[
-              { icon: "ri-shield-check-line", label: "Tickets issued only after confirmed payment" },
-              { icon: "ri-smartphone-line", label: "M-Pesa STK Push checkout" },
-              { icon: "ri-qr-scan-2-line", label: "Duplicate scans rejected at the gate" },
+              { icon: "ri-shield-check-line", label: "Events managed by verified organizers" },
+              { icon: "ri-ticket-2-line", label: "Tickets saved to your account" },
+              { icon: "ri-qr-scan-2-line", label: "QR validation at event entry" },
             ].map((item) => (
               <span key={item.label} className="flex items-center gap-1.5">
                 <i className={cn(item.icon, "text-white/70")} />
@@ -322,34 +322,39 @@ export function FreeEventsBanner({ eventsList }: { eventsList: EventItem[] }) {
 }
 
 export function OrganizerStrip() {
+  const [organizers, setOrganizers] = useState<Array<{ id: string; full_name: string; avatar_url: string | null; location: string | null; bio: string | null }>>([]);
+  useEffect(() => {
+    void supabase.from("public_profiles").select("id,full_name,avatar_url,location,bio").eq("role", "creator").eq("verified", true).limit(6)
+      .then(({ data }) => setOrganizers((data ?? []) as typeof organizers));
+  }, []);
   return (
     <section className="mx-auto mt-12 w-full max-w-[1400px] px-4 md:mt-16 md:px-6">
       <SectionTitle
         eyebrow="Who is behind the shows"
         title="Popular organizers on Dala Tickets"
-        subtitle="Verified organizers have submitted business documents and a valid payout account."
+        subtitle="Organizers shown here have completed platform verification."
       />
       <div className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
-        {organizers.slice(0, 6).map((organizer) => (
+        {organizers.map((organizer) => (
           <div
             key={organizer.id}
             className="flex items-start gap-3 rounded-card border border-background-200 bg-background-50 p-4"
           >
             <span className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-foreground-950 text-xs font-bold text-background-50">
-              {organizer.initials}
+              {organizer.avatar_url ? <img src={organizer.avatar_url} alt="" className="h-full w-full rounded-full object-cover" /> : (organizer.full_name || "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-foreground-950">{organizer.name}</p>
-                {organizer.verified && <i className="ri-verified-badge-fill text-sm text-accent-600" />}
+                <p className="truncate text-sm font-semibold text-foreground-950">{organizer.full_name}</p>
+                <i className="ri-verified-badge-fill text-sm text-accent-600" />
               </div>
               <p className="mt-0.5 text-[11px] text-foreground-500">
-                {organizer.city} · {organizer.eventsHosted} events · {organizer.followers} followers
+                {organizer.location || "Kenya"}
               </p>
-              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-foreground-600">{organizer.bio}</p>
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-foreground-600">{organizer.bio || "Verified event organizer"}</p>
             </div>
             <span className="flex items-center gap-1 rounded-md bg-background-100 px-2 py-1 text-[11px] font-bold text-foreground-800">
-              <i className="ri-star-fill text-primary-500" /> {organizer.rating}
+              <i className="ri-verified-badge-fill text-accent-600" /> Verified
             </span>
           </div>
         ))}
@@ -360,9 +365,9 @@ export function OrganizerStrip() {
 
 const steps = [
   { icon: "ri-search-eye-line", title: "Discover and choose", body: "Filter by city, date, category and price. Compare ticket categories before you commit." },
-  { icon: "ri-smartphone-line", title: "Pay with M-Pesa", body: "Confirm the STK Push on your phone. Every fee is disclosed before payment." },
-  { icon: "ri-ticket-2-line", title: "Get your QR ticket", body: "Tickets are issued only after payment is confirmed, then they land in your wallet." },
-  { icon: "ri-qr-scan-line", title: "Scan in at the gate", body: "One scan turns green. A second scan of the same ticket turns red instantly." },
+  { icon: "ri-smartphone-line", title: "Ticket payments", body: "Online ticket payment collection will be available after payment provider setup is complete." },
+  { icon: "ri-ticket-2-line", title: "Manage your tickets", body: "Tickets linked to your account appear in your wallet." },
+  { icon: "ri-qr-scan-line", title: "Scan in at the gate", body: "Gate staff can validate paid tickets and prevent duplicate scans." },
 ];
 
 export function HowItWorks() {

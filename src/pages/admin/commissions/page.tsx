@@ -1,18 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, Input, Label, Modal, Select, TableWrap, Td, Th } from "@/components/base/ui";
 import { formatKsh } from "@/lib/helpers";
 import { adminMobileNav, adminNav } from "@/pages/organizer/nav";
-import { commissionRules } from "@/mocks/admin";
 import { useApp } from "@/store/AppStore";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/store/AuthProvider";
+
+type Rule = { id: string; scope: string; target: string; rate: number; updated: string; updatedBy: string };
 
 export default function CommissionsPage() {
   const { pushToast } = useApp();
-  const [rules, setRules] = useState(commissionRules);
+  const { user } = useAuth();
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [defaultRuleId, setDefaultRuleId] = useState<string | null>(null);
   const [defaultRate, setDefaultRate] = useState("10");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [newRule, setNewRule] = useState({ scope: "Organizer override", target: "", rate: "9" });
+
+  const loadRules = async () => {
+    const { data, error } = await supabase.from("commission_rules").select("id,scope,target_id,rate,updated_at,created_by").eq("active", true).order("updated_at", { ascending: false });
+    if (error) { pushToast(error.message, "danger"); return; }
+    setRules((data ?? []).map((row) => ({
+      id: row.id,
+      scope: row.scope === "platform" ? "Platform default" : row.scope === "organizer" ? "Organizer override" : "Event override",
+      target: row.target_id ?? "All organizers", rate: Number(row.rate),
+      updated: String(row.updated_at).slice(0, 10), updatedBy: row.created_by === user?.id ? "You" : row.created_by ?? "Platform admin",
+    })));
+    const primary = (data ?? []).find((row) => row.scope === "platform" && !row.target_id);
+    if (primary) { setDefaultRuleId(primary.id); setDefaultRate(String(primary.rate)); }
+  };
+
+  useEffect(() => { void loadRules(); }, [user?.id]);
+
+  const saveOverride = async () => {
+    const scope = newRule.scope === "Event override" ? "event" : "organizer";
+    const table = scope === "event" ? "events" : "users";
+    const column = scope === "event" ? "title" : "full_name";
+    const lookup = await supabase.from(table).select("id").ilike(column, newRule.target.trim()).limit(1).maybeSingle();
+    if (lookup.error || !lookup.data) { pushToast(lookup.error?.message ?? "No matching target was found.", "danger"); return; }
+    const result = await supabase.from("commission_rules").upsert({ scope, target_id: lookup.data.id, rate: Number(newRule.rate), active: true, created_by: user?.id, updated_at: new Date().toISOString() }, { onConflict: "scope,target_id" });
+    if (result.error) { pushToast(result.error.message, "danger"); return; }
+    await loadRules();
+    setNewRule({ scope: "Organizer override", target: "", rate: "9" });
+    pushToast("Commission override saved.", "success");
+  };
 
   const samplePrice = 1500;
   const rate = Number(defaultRate);
@@ -95,18 +128,7 @@ export default function CommissionsPage() {
                   pushToast("Choose the organizer or event this override applies to.", "danger");
                   return;
                 }
-                setRules((current) => [
-                  {
-                    id: `cr-${Date.now()}`,
-                    scope: newRule.scope,
-                    target: newRule.target,
-                    rate: Number(newRule.rate),
-                    updated: "2026-10-27",
-                    updatedBy: "Platform admin",
-                  },
-                  ...current,
-                ]);
-                setNewRule({ scope: "Organizer override", target: "", rate: "9" });
+                void saveOverride();
                 pushToast("Override added — it applies to new orders only.", "success");
               }}
             >
@@ -142,7 +164,12 @@ export default function CommissionsPage() {
                   <Td className="text-xs text-foreground-600">{rule.updatedBy}</Td>
                   <Td>
                     <button
-                      onClick={() => pushToast("Override removal requires a second admin approval.", "warning")}
+                      onClick={() => {
+                        void supabase.from("commission_rules").delete().eq("id", rule.id).then(({ error }) => {
+                          if (error) pushToast(error.message, "danger");
+                          else { setRules((current) => current.filter((item) => item.id !== rule.id)); pushToast("Rule removed.", "success"); }
+                        });
+                      }}
                       className="cursor-pointer text-[11px] font-semibold text-primary-700"
                     >
                       Remove
@@ -177,8 +204,14 @@ export default function CommissionsPage() {
             </Button>
             <Button
               onClick={() => {
-                setConfirmOpen(false);
-                pushToast(`Default commission updated to ${rate}%.`, "success");
+                void (async () => {
+                  const payload = { scope: "platform", target_id: null, rate, active: true, created_by: user?.id, updated_at: new Date().toISOString() };
+                  const result = defaultRuleId
+                    ? await supabase.from("commission_rules").update(payload).eq("id", defaultRuleId)
+                    : await supabase.from("commission_rules").insert(payload);
+                  if (result.error) pushToast(result.error.message, "danger");
+                  else { setConfirmOpen(false); await loadRules(); pushToast(`Default commission saved at ${rate}%.`, "success"); }
+                })();
               }}
             >
               Confirm change

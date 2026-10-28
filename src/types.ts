@@ -13,6 +13,7 @@ export interface TicketTier {
 
 export interface EventItem {
   id: string;
+  status?: string;
   slug: string;
   title: string;
   category: string;
@@ -51,6 +52,8 @@ export interface WalletTicket {
   code: string;
   orderReference: string;
   eventSlug: string;
+  eventId?: string;
+  price?: number;
   tier: string;
   attendee: string;
   status: "Valid" | "Used" | "Cancelled";

@@ -3,8 +3,8 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/helpers";
 import { BrandMark } from "@/components/feature/PublicLayout";
 import ThemeToggle from "@/components/base/ThemeToggle";
-import { notifications } from "@/mocks/dashboard";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
 
 export type DashNavItem = {
   label: string;
@@ -32,7 +32,6 @@ export default function DashboardShell({
   nav,
   mobileNav,
   userName,
-  userRole,
   initials,
   title,
   description,
@@ -40,18 +39,17 @@ export default function DashboardShell({
   children,
 }: DashboardShellProps) {
   const location = useLocation();
-  const { notificationsRead, markNotificationsRead } = useApp();
+  const { notifications, notificationsRead, markNotificationsRead } = useApp();
+  const { user, profile } = useAuth();
+  const displayName = profile?.full_name || user?.email || userName;
+  const displayRole = variant === "admin" ? "Platform administrator" : profile?.verified ? "Verified organizer" : "Organizer";
+  const displayInitials = profile?.full_name
+    ? profile.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
+    : user?.email?.slice(0, 2).toUpperCase() || initials;
   const [notifOpen, setNotifOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const unread = notifications.filter((item) => item.unread && !notificationsRead.includes(item.id)).length;
+  const unread = notifications.filter((item) => !item.read && !notificationsRead.includes(item.id)).length;
   const accentClass = variant === "admin" ? "bg-foreground-900" : "bg-secondary-900";
-
-  const toneMap: Record<string, string> = {
-    success: "bg-accent-500",
-    warning: "bg-primary-500",
-    danger: "bg-primary-700",
-    pending: "bg-primary-500",
-  };
 
   return (
     <div className="min-h-screen bg-background-100">
@@ -110,11 +108,11 @@ export default function DashboardShell({
         <div className="border-t border-background-200 p-3">
           <div className="flex items-center gap-2.5 rounded-md bg-background-100 p-2.5">
             <span className={cn("flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-background-50", accentClass)}>
-              {initials}
+              {displayInitials}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-foreground-950">{userName}</p>
-              <p className="truncate text-[10px] text-foreground-500">{userRole}</p>
+              <p className="truncate text-xs font-semibold text-foreground-950">{displayName}</p>
+              <p className="truncate text-[10px] text-foreground-500">{displayRole}</p>
             </div>
             <Link to="/" className="cursor-pointer text-foreground-400 hover:text-foreground-900" aria-label="Back to site">
               <i className="ri-logout-box-r-line text-sm" />
@@ -214,11 +212,11 @@ export default function DashboardShell({
                   <div className="max-h-[320px] overflow-y-auto">
                     {notifications.map((item) => (
                       <div key={item.id} className="flex gap-2.5 rounded-md px-2 py-2 hover:bg-background-100">
-                        <span className={cn("mt-1.5 h-1.5 w-1.5 flex-none rounded-full", toneMap[item.tone] ?? "bg-foreground-400")} />
+                        <span className={cn("mt-1.5 h-1.5 w-1.5 flex-none rounded-full", item.read ? "bg-foreground-300" : "bg-primary-500")} />
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-foreground-900">{item.title}</p>
                           <p className="mt-0.5 line-clamp-2 text-[11px] text-foreground-600">{item.body}</p>
-                          <p className="mt-1 text-[10px] text-foreground-400">{item.time}</p>
+                          <p className="mt-1 text-[10px] text-foreground-400">{new Date(item.created_at).toLocaleString()}</p>
                         </div>
                       </div>
                     ))}
@@ -227,7 +225,7 @@ export default function DashboardShell({
               )}
             </div>
             <span className={cn("flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-bold text-background-50", accentClass)}>
-              {initials}
+              {displayInitials}
             </span>
           </div>
         </header>

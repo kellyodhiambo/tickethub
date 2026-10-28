@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
@@ -6,13 +6,39 @@ import { CategoryBarChart, SalesAreaChart } from "@/components/feature/Charts";
 import { Badge, Button, Card, Progress, Select, StatCard, TableWrap, Td, Th } from "@/components/base/ui";
 import { formatKsh, formatNumber } from "@/lib/helpers";
 import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
-import { categorySales, eventPerformance, orders, organizerKpis, salesTrend } from "@/mocks/dashboard";
-import { events } from "@/mocks/events";
+import { useOrganizerData } from "@/hooks/useOrganizerData";
 
 export default function OrganizerOverviewPage() {
   const [range, setRange] = useState("30");
   const [eventFilter, setEventFilter] = useState("all");
-  const liveEvents = events.filter((event) => ["evt-1", "evt-2", "evt-5", "evt-11"].includes(event.id));
+  const { events: liveEvents, orders, tickets, loading, error } = useOrganizerData();
+  const paidOrders = orders.filter((order) => order.status === "Paid");
+  const grossSales = paidOrders.reduce((sum, order) => sum + order.total, 0);
+  const commission = paidOrders.reduce((sum, order) => sum + order.commission, 0);
+  const ticketsSold = paidOrders.reduce((sum, order) => sum + order.quantity, 0);
+  const checkedIn = tickets.filter((ticket) => Boolean(ticket.scannedAt)).length;
+  const organizerKpis = {
+    grossSales, commission, providerFees: 0, netEarnings: grossSales - commission,
+    availableBalance: 0, pendingSettlement: 0, ticketsSold, checkedIn,
+  };
+  const salesTrend = useMemo(() => {
+    const byDate = new Map<string, number>();
+    for (const order of paidOrders) {
+      const date = order.createdAt.slice(0, 10);
+      byDate.set(date, (byDate.get(date) ?? 0) + order.total);
+    }
+    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([label, sales]) => ({ label: label.slice(5), sales }));
+  }, [paidOrders]);
+  const categorySales = useMemo(() => {
+    const byTier = new Map<string, number>();
+    for (const order of paidOrders) byTier.set(order.tier, (byTier.get(order.tier) ?? 0) + order.total);
+    return [...byTier.entries()].map(([label, value]) => ({ label, value, color: "primary" }));
+  }, [paidOrders]);
+  const eventPerformance = liveEvents.map((event) => {
+    const eventOrders = paidOrders.filter((order) => order.eventId === event.id);
+    const sold = eventOrders.reduce((sum, order) => sum + order.quantity, 0);
+    return { name: event.title, sold, capacity: event.capacity, revenue: eventOrders.reduce((sum, order) => sum + order.total, 0), attendance: sold ? Math.round((tickets.filter((ticket) => ticket.eventId === event.id && ticket.scannedAt).length / sold) * 100) : 0 };
+  });
 
   return (
     <DashboardShell
@@ -57,17 +83,19 @@ export default function OrganizerOverviewPage() {
       }
     >
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatCard label="Gross ticket sales" value={formatKsh(organizerKpis.grossSales, { compact: true })} icon="ri-line-chart-line" trend="+18%" hint="vs last period" />
-        <StatCard label="Platform commission" value={formatKsh(organizerKpis.commission, { compact: true })} icon="ri-percent-line" tone="secondary" hint="10% of gross" />
+        <StatCard label="Gross ticket sales" value={formatKsh(organizerKpis.grossSales, { compact: true })} icon="ri-line-chart-line" hint="Recorded paid orders" />
+        <StatCard label="Recorded commission" value={formatKsh(organizerKpis.commission, { compact: true })} icon="ri-percent-line" tone="secondary" hint="From paid order records" />
         <StatCard label="Net organizer earnings" value={formatKsh(organizerKpis.netEarnings, { compact: true })} icon="ri-wallet-3-line" tone="accent" hint="After commission & fees" />
-        <StatCard label="Available to withdraw" value={formatKsh(organizerKpis.availableBalance, { compact: true })} icon="ri-bank-card-line" hint="Settlement cleared" />
+        <StatCard label="Available to withdraw" value="Unavailable" icon="ri-bank-card-line" hint="Settlement API pending" />
       </div>
+      {error && <p role="alert" className="mt-3 text-sm text-accent-700">{error}</p>}
+      {loading && <p className="mt-3 text-sm text-foreground-500">Loading live event and order data…</p>}
 
       <div className="mt-2.5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatCard label="Pending settlement" value={formatKsh(organizerKpis.pendingSettlement, { compact: true })} icon="ri-time-line" tone="secondary" hint="Clears in 2 business days" />
-        <StatCard label="Tickets sold" value={formatNumber(organizerKpis.ticketsSold)} icon="ri-ticket-2-line" tone="accent" trend="+642" />
-        <StatCard label="Checked in" value={formatNumber(organizerKpis.checkedIn)} icon="ri-qr-scan-line" hint={`${Math.round((organizerKpis.checkedIn / organizerKpis.ticketsSold) * 100)}% attendance`} />
-        <StatCard label="Refunds issued" value={formatKsh(organizerKpis.refunds, { compact: true })} icon="ri-refund-2-line" tone="foreground" hint="3 requests" />
+        <StatCard label="Pending settlement" value="Unavailable" icon="ri-time-line" tone="secondary" hint="Bank settlement API pending" />
+        <StatCard label="Tickets sold" value={formatNumber(organizerKpis.ticketsSold)} icon="ri-ticket-2-line" tone="accent" />
+        <StatCard label="Checked in" value={formatNumber(organizerKpis.checkedIn)} icon="ri-qr-scan-line" hint={`${organizerKpis.ticketsSold ? Math.round((organizerKpis.checkedIn / organizerKpis.ticketsSold) * 100) : 0}% attendance`} />
+        <StatCard label="Refunds issued" value="Unavailable" icon="ri-refund-2-line" tone="foreground" hint="Refund processing is not connected" />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.6fr_1fr]">
@@ -132,7 +160,7 @@ export default function OrganizerOverviewPage() {
                   <Td className="font-num text-xs">{formatKsh(row.revenue, { compact: true })}</Td>
                   <Td className="text-xs">{row.attendance}%</Td>
                   <Td className="w-[160px]">
-                    <Progress value={(row.sold / row.capacity) * 100} />
+                    <Progress value={row.capacity ? (row.sold / row.capacity) * 100 : 0} />
                     <p className="mt-1 text-[10px] text-foreground-500">
                       {formatNumber(row.sold)} / {formatNumber(row.capacity)}
                     </p>
@@ -154,13 +182,12 @@ export default function OrganizerOverviewPage() {
           </div>
           <div className="mt-2 divide-y divide-background-100">
             {orders.slice(0, 5).map((order) => {
-              const event = events.find((item) => item.slug === order.eventSlug);
               return (
                 <div key={order.id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-semibold text-foreground-950">{order.buyer}</p>
                     <p className="truncate text-[10px] text-foreground-500">
-                      {order.reference} · {order.quantity} × {order.tier} · {event?.title}
+                      {order.reference} · {order.quantity} × {order.tier} · {order.eventTitle}
                     </p>
                   </div>
                   <div className="flex flex-none items-center gap-2">
@@ -179,33 +206,16 @@ export default function OrganizerOverviewPage() {
           <Card className="p-4">
             <p className="text-sm font-bold text-foreground-950">Needs your attention</p>
             <div className="mt-2 space-y-2">
-              {[
-                { icon: "ri-alert-line", title: "2 withdrawals pending approval", body: "KSh 408,400 awaiting finance review", to: "/organizer/withdrawals", tone: "text-primary-700" },
-                { icon: "ri-error-warning-line", title: "6 duplicate scans rejected", body: "Sound Factory Nairobi · Gate B", to: "/scanner", tone: "text-primary-700" },
-                { icon: "ri-user-add-line", title: "1 staff invite not accepted", body: "Brian Wekesa · Gate C", to: "/organizer/staff", tone: "text-accent-700" },
-              ].map((item) => (
-                <Link
-                  key={item.title}
-                  to={item.to}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-md border border-background-200 p-2.5 hover:border-foreground-400"
-                >
-                  <i className={`${item.icon} mt-0.5 ${item.tone}`} />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-foreground-950">{item.title}</p>
-                    <p className="text-[10px] text-foreground-500">{item.body}</p>
-                  </div>
-                </Link>
-              ))}
+              <Link to="/organizer/orders" className="block rounded-md border border-background-200 p-2.5 text-[11px] font-semibold text-foreground-900 hover:border-foreground-400">Review live order records ({orders.length})</Link>
+              <Link to="/organizer/withdrawals" className="block rounded-md border border-background-200 p-2.5 text-[11px] text-foreground-700 hover:border-foreground-400">Bank settlement API is not connected; withdrawals are locked.</Link>
             </div>
           </Card>
 
           <Card className="border-accent-200 bg-accent-50 p-4">
             <p className="text-sm font-bold text-accent-900">Commission clarity</p>
             <p className="mt-1 text-[11px] leading-relaxed text-accent-900/85">
-              Gross {formatKsh(organizerKpis.grossSales, { compact: true })} − commission{" "}
-              {formatKsh(organizerKpis.commission, { compact: true })} − provider fees{" "}
-              {formatKsh(organizerKpis.providerFees, { compact: true })} ={" "}
-              <strong>{formatKsh(organizerKpis.netEarnings, { compact: true })}</strong> net entitlement.
+              Gross {formatKsh(organizerKpis.grossSales, { compact: true })} less recorded commission{" "}
+              {formatKsh(organizerKpis.commission, { compact: true })}. Provider fees and settlement are unavailable until payment APIs are connected.
             </p>
             <Link to="/organizer/earnings" className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-accent-800">
               Open statement <i className="ri-arrow-right-line" />

@@ -4,11 +4,40 @@ import { Badge, Button, Card, Progress, StatCard, TableWrap, Td, Th } from "@/co
 import { CategoryBarChart, SalesAreaChart } from "@/components/feature/Charts";
 import { formatKsh, formatNumber } from "@/lib/helpers";
 import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
-import { categorySales, eventPerformance, organizerKpis, salesTrend } from "@/mocks/dashboard";
 import { useApp } from "@/store/AppStore";
+import { useOrganizerData } from "@/hooks/useOrganizerData";
+import { useState } from "react";
 
 export default function AnalyticsPage() {
   const { pushToast } = useApp();
+  const { events, orders, tickets, loading, error } = useOrganizerData();
+  const [range, setRange] = useState("30");
+  const cutoff = Date.now() - (range === "year" ? 365 : Number(range)) * 86400000;
+  const paidOrders = orders.filter((order) => order.status === "Paid" && new Date(order.createdAt).getTime() >= cutoff);
+  const organizerKpis = { ticketsSold: paidOrders.reduce((sum, order) => sum + order.quantity, 0), grossSales: paidOrders.reduce((sum, order) => sum + order.total, 0) };
+  const paidTickets = tickets.filter((ticket) => ["paid", "completed"].includes(ticket.paymentStatus.toLowerCase()));
+  const attendanceRate = paidTickets.length ? Math.round(paidTickets.filter((ticket) => ticket.scannedAt).length / paidTickets.length * 100) : 0;
+  const refundedOrders = orders.filter((order) => order.status === "Refunded");
+  const refundRate = orders.length ? Math.round(refundedOrders.length / orders.length * 1000) / 10 : 0;
+  const salesTrend = [...new Set(paidOrders.map((order) => order.createdAt.slice(0, 10)))].sort().map((day) => ({ label: day.slice(5), sales: paidOrders.filter((order) => order.createdAt.startsWith(day)).reduce((sum, order) => sum + order.total, 0) }));
+  const categoryMap = new Map<string, number>();
+  for (const order of paidOrders) categoryMap.set(order.tier, (categoryMap.get(order.tier) ?? 0) + order.total);
+  const categorySales = [...categoryMap.entries()].map(([label, value]) => ({ label, value, color: "primary" }));
+  const eventPerformance = events.map((event) => {
+    const eventOrders = paidOrders.filter((order) => order.eventId === event.id);
+    const sold = eventOrders.reduce((sum, order) => sum + order.quantity, 0);
+    const checked = tickets.filter((ticket) => ticket.eventId === event.id && ticket.scannedAt).length;
+    return { name: event.title, city: event.city, sold, attendance: sold ? Math.round(checked / sold * 100) : 0, revenue: eventOrders.reduce((sum, order) => sum + order.total, 0) };
+  });
+  const hourCounts = new Map<number, number>();
+  for (const order of paidOrders) { const hour = new Date(order.createdAt).getHours(); hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + order.quantity); }
+  const bestHour = [...hourCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const buyerCounts = new Map<string, number>();
+  for (const order of paidOrders) buyerCounts.set(order.buyer, (buyerCounts.get(order.buyer) ?? 0) + 1);
+  const repeatPercent = buyerCounts.size ? Math.round([...buyerCounts.values()].filter((count) => count > 1).length / buyerCounts.size * 100) : 0;
+  const cityRevenue = new Map<string, number>();
+  for (const event of events) for (const order of paidOrders.filter((item) => item.eventId === event.id)) cityRevenue.set(event.city, (cityRevenue.get(event.city) ?? 0) + order.total);
+  const topCity = [...cityRevenue.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Ã¢â‚¬â€";
 
   return (
     <DashboardShell
@@ -16,35 +45,46 @@ export default function AnalyticsPage() {
       nav={organizerNav}
       mobileNav={organizerMobileNav}
       userName="DalaLive Events"
-      userRole="Verified organizer · Kisumu"
+      userRole="Verified organizer Ã‚Â· Kisumu"
       initials="DL"
       title="Analytics"
       description="Sales, conversion, attendance and refund performance"
       actions={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2 text-[11px]">
-            {["Last 30 days", "Last 90 days", "This year"].map((range, index) => (
+            {[["30", "Last 30 days"], ["90", "Last 90 days"], ["year", "This year"]].map(([value, label]) => (
               <span
-                key={range}
+                key={value}
+                role="button"
+                tabIndex={0}
+                onClick={() => setRange(value)}
                 className={`rounded-full px-2.5 py-1 font-semibold ${
-                  index === 0 ? "bg-foreground-950 text-background-50" : "border border-background-300 text-foreground-600"
+                  range === value ? "bg-foreground-950 text-background-50" : "border border-background-300 text-foreground-600"
                 }`}
               >
-                {range}
+                {label}
               </span>
             ))}
           </div>
-          <Button size="sm" variant="outline" onClick={() => pushToast("Analytics report exported as CSV.", "success")}>
+          <Button size="sm" variant="outline" onClick={() => {
+            const content = [["Reference", "Buyer", "Event", "Tier", "Quantity", "Gross", "Commission", "Status", "Created"], ...paidOrders.map((order) => [order.reference, order.buyer, order.eventTitle, order.tier, String(order.quantity), String(order.total), String(order.commission), order.status, order.createdAt])]
+              .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");
+            const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+            const anchor = document.createElement("a"); anchor.href = url; anchor.download = "organizer-analytics.csv"; anchor.click(); URL.revokeObjectURL(url);
+            pushToast("Live analytics exported.", "success");
+          }}>
             <i className="ri-download-2-line" /> Export report
           </Button>
         </div>
       }
     >
+      {loading && <p className="mb-3 text-sm text-foreground-500">Loading live analyticsÃ¢â‚¬Â¦</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-accent-700">{error}</p>}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatCard label="Tickets sold" value={formatNumber(organizerKpis.ticketsSold)} icon="ri-ticket-2-line" trend="+11%" />
-        <StatCard label="Gross revenue" value={formatKsh(organizerKpis.grossSales, { compact: true })} icon="ri-line-chart-line" tone="accent" trend="+18%" />
-        <StatCard label="Attendance rate" value="67%" icon="ri-qr-scan-line" tone="secondary" hint="Checked in vs issued" />
-        <StatCard label="Refund rate" value="1.5%" icon="ri-refund-2-line" tone="foreground" hint="Below 3% target" />
+        <StatCard label="Tickets sold" value={formatNumber(organizerKpis.ticketsSold)} icon="ri-ticket-2-line" />
+        <StatCard label="Gross revenue" value={formatKsh(organizerKpis.grossSales, { compact: true })} icon="ri-line-chart-line" tone="accent" />
+        <StatCard label="Attendance rate" value={`${attendanceRate}%`} icon="ri-qr-scan-line" tone="secondary" hint="Checked in vs paid tickets" />
+        <StatCard label="Refund rate" value={`${refundRate}%`} icon="ri-refund-2-line" tone="foreground" hint={`${refundedOrders.length} refunded orders`} />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.5fr_1fr]">
@@ -126,9 +166,9 @@ export default function AnalyticsPage() {
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         {[
-          { title: "Best selling window", value: "18:00 – 23:00", body: "Most tickets are bought on mobile in the evening, 3–7 days before an event." },
-          { title: "Top city", value: "Nairobi", body: "62% of your ticket volume. Kisumu follows at 21%." },
-          { title: "Repeat buyers", value: "34%", body: "Of attendees have bought from you more than once this year." },
+          { title: "Busiest purchase hour", value: bestHour === undefined ? "—" : String(bestHour).padStart(2, "0") + ":00", body: "Based on paid orders in the selected period." },
+          { title: "Top city", value: topCity, body: "Ranked by paid ticket revenue in the selected period." },
+          { title: "Repeat buyers", value: String(repeatPercent) + "%", body: "Share of distinct buyers with multiple paid orders." },
         ].map((item) => (
           <Card key={item.title} className="p-4">
             <p className="text-[10px] font-label font-semibold uppercase tracking-wider text-foreground-500">{item.title}</p>

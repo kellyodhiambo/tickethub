@@ -7,12 +7,16 @@ import StayReminder from "@/components/feature/StayReminder";
 import TicketStub from "@/components/feature/TicketStub";
 import { formatEventDate } from "@/lib/helpers";
 import { saveTicketImage, saveTicketPdf } from "@/lib/ticketDownload";
-import { events } from "@/mocks/events";
+import { useEvents } from "@/hooks/useEvents";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
+import { supabase } from "@/lib/supabase";
 
 export default function TicketDetailPage() {
   const { code } = useParams();
   const { tickets, pushToast } = useApp();
+  const { events } = useEvents();
+  const { user } = useAuth();
   const [transferOpen, setTransferOpen] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [busy, setBusy] = useState<"png" | "pdf" | null>(null);
@@ -136,13 +140,17 @@ export default function TicketDetailPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => setTransferOpen(true)}
-                  disabled={ticket.status !== "Valid"}
+                  disabled
                 >
                   <i className="ri-share-forward-line" /> Transfer
                 </Button>
               </div>
               <button
-                onClick={() => pushToast("Refund request sent to the organizer for review.", "info")}
+                onClick={async () => {
+                  if (!user?.id || !ticket.eventId || !ticket.price) { pushToast("Could not verify the paid amount for this ticket.", "danger"); return; }
+                  const { error } = await supabase.from("ticket_refund_requests").insert({ ticket_id: ticket.id, user_id: user.id, event_id: ticket.eventId, reason: "Customer requested refund", amount: ticket.price });
+                  if (error) pushToast(error.message, "danger"); else pushToast("Refund request submitted for organizer review.", "success");
+                }}
                 className="mt-1 w-full cursor-pointer rounded-btn py-1.5 text-[10.5px] font-semibold text-foreground-500 transition-colors hover:bg-background-100 hover:text-foreground-900"
               >
                 <i className="ri-refund-2-line mr-1" /> Request refund
@@ -184,8 +192,7 @@ export default function TicketDetailPage() {
         <div className="mt-4 rounded-card border border-primary-200 bg-primary-50 p-4">
           <p className="flex items-start gap-2 text-[11px] leading-relaxed text-primary-900">
             <i className="ri-information-fill mt-0.5" />
-            Demo ticket. In production this QR code is validated server-side against payment status
-            and ticket state, and the first successful scan atomically marks it used.
+            This ticket was issued after a confirmed payment. Keep the QR code private; entry validation checks its current state.
           </p>
         </div>
       </div>

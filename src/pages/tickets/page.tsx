@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
-import { Badge, Button, EmptyState, Progress } from "@/components/base/ui";
+import { Badge, Button, EmptyState } from "@/components/base/ui";
 import QrCode from "@/components/feature/QrCode";
 import { cn, formatEventDate, formatKsh } from "@/lib/helpers";
 import { tierTheme } from "@/lib/tierTheme";
-import { events } from "@/mocks/events";
+import { useEvents } from "@/hooks/useEvents";
 import { useApp } from "@/store/AppStore";
 
 const tabs = [
@@ -17,7 +17,9 @@ const tabs = [
 
 export default function MyTicketsPage() {
   const { tickets, orders } = useApp();
+  const { events } = useEvents();
   const [tab, setTab] = useState("upcoming");
+  const attendedEventCount = new Set(tickets.filter((ticket) => ticket.status === "Used").map((ticket) => ticket.eventSlug)).size;
 
   const enriched = useMemo(
     () =>
@@ -182,8 +184,8 @@ export default function MyTicketsPage() {
         <div className="mt-8 grid gap-3 md:grid-cols-3">
           {[
             { icon: "ri-download-2-line", title: "Download before you travel", body: "Tickets work offline once opened. Save a copy in case the network drops." },
-            { icon: "ri-share-forward-line", title: "Transfers where permitted", body: "Some organizers allow name changes. The QR code is reissued on transfer." },
-            { icon: "ri-notification-3-line", title: "Reminders before doors", body: "We send a reminder with gate times and entry rules 24 hours before." },
+            { icon: "ri-share-forward-line", title: "Ticket transfers", body: "Transfers are currently disabled until a secure ownership transfer flow is available." },
+            { icon: "ri-notification-3-line", title: "Event updates", body: "Manage in-app and email notification preferences from your account." },
           ].map((item) => (
             <div key={item.title} className="rounded-card border border-background-200 bg-background-50 p-4">
               <span className="flex h-9 w-9 items-center justify-center rounded-md bg-secondary-100 text-secondary-900">
@@ -197,14 +199,11 @@ export default function MyTicketsPage() {
 
         <div className="mt-6 rounded-card border border-background-200 bg-background-50 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-foreground-950">Loyalty progress</p>
-            <span className="text-[11px] text-foreground-500">4 of 6 events attended</span>
-          </div>
-          <div className="mt-2">
-            <Progress value={66} tone="accent" />
+            <p className="text-xs font-bold text-foreground-950">Events attended</p>
+            <span className="text-[11px] text-foreground-500">{attendedEventCount} event{attendedEventCount === 1 ? "" : "s"}</span>
           </div>
           <p className="mt-2 text-[11px] text-foreground-600">
-            Attend two more events to unlock a KSh 500 credit towards your next ticket.
+            Attendance is counted from tickets scanned at the gate. Loyalty credits are not enabled yet.
           </p>
         </div>
       </div>

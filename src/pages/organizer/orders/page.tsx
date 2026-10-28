@@ -1,20 +1,58 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, EmptyState, Modal, Select, TableWrap, Td, Th } from "@/components/base/ui";
 import { formatKsh } from "@/lib/helpers";
 import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
-import { orders } from "@/mocks/dashboard";
-import { events } from "@/mocks/events";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
+import { supabase } from "@/lib/supabase";
+import type { OrderRecord } from "@/types";
+
+type OrganizerOrder = OrderRecord & { eventTitle: string };
 
 export default function OrganizerOrdersPage() {
   const { pushToast } = useApp();
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<OrganizerOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [refundOpen, setRefundOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!user?.id) { setOrders([]); setLoading(false); return; }
+      setLoadError(null);
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id,reference,event_id,buyer,phone,tier,quantity,total,commission,status,channel,created_at,events!inner(slug,title,organizer_id)")
+        .eq("events.organizer_id", user.id)
+        .order("created_at", { ascending: false });
+      if (!active) return;
+      if (error) setLoadError(error.message);
+      else setOrders((data ?? []).map((raw) => {
+        const row = raw as Record<string, unknown>;
+        const event = row.events as { slug?: string; title?: string };
+        const statusValue = String(row.status ?? "pending").toLowerCase();
+        return {
+          id: String(row.id), reference: String(row.reference ?? row.id), eventSlug: String(event.slug ?? row.event_id),
+          eventTitle: String(event.title ?? "Event"), buyer: String(row.buyer ?? ""), phone: String(row.phone ?? ""),
+          tier: String(row.tier ?? "General"), quantity: Number(row.quantity ?? 1), total: Number(row.total ?? 0),
+          commission: Number(row.commission ?? 0),
+          status: statusValue === "paid" || statusValue === "completed" ? "Paid" : statusValue === "refunded" ? "Refunded" : statusValue === "failed" ? "Failed" : "Pending",
+          channel: String(row.channel ?? ""), createdAt: String(row.created_at ?? "").slice(0, 16).replace("T", " "),
+        };
+      }));
+      setLoading(false);
+    };
+    void load();
+    return () => { active = false; };
+  }, [user?.id]);
 
   const filtered = useMemo(
     () =>
@@ -39,7 +77,7 @@ export default function OrganizerOrdersPage() {
         order.reference,
         order.buyer,
         order.phone,
-        events.find((event) => event.slug === order.eventSlug)?.title ?? order.eventSlug,
+        order.eventTitle,
         order.tier,
         String(order.quantity),
         String(order.total),
@@ -91,9 +129,9 @@ export default function OrganizerOrdersPage() {
             </Select>
             <Select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} className="h-9 w-auto text-xs">
               <option value="all">All events</option>
-              {events.slice(0, 6).map((event) => (
-                <option key={event.slug} value={event.slug}>
-                  {event.title}
+              {[...new Map(orders.map((order) => [order.eventSlug, order.eventTitle])).entries()].map(([slug, title]) => (
+                <option key={slug} value={slug}>
+                  {title}
                 </option>
               ))}
             </Select>
@@ -118,7 +156,10 @@ export default function OrganizerOrdersPage() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading && <p className="py-8 text-center text-sm text-foreground-500">Loading orders…</p>}
+      {loadError && <p role="alert" className="mb-3 text-sm text-accent-700">{loadError}</p>}
+
+      {!loading && filtered.length === 0 ? (
         <EmptyState
           icon="ri-shopping-bag-3-line"
           title="No orders match these filters"
@@ -152,7 +193,7 @@ export default function OrganizerOrdersPage() {
                       <p className="text-[10px] text-foreground-500">{order.phone}</p>
                     </Td>
                     <Td>
-                      <p className="text-xs text-foreground-800">{events.find((event) => event.slug === order.eventSlug)?.title}</p>
+                      <p className="text-xs text-foreground-800">{order.eventTitle}</p>
                       <p className="text-[10px] text-foreground-500">
                         {order.quantity} × {order.tier}
                       </p>
@@ -191,7 +232,7 @@ export default function OrganizerOrdersPage() {
                   </Badge>
                 </div>
                 <p className="mt-1.5 text-[11px] text-foreground-600">
-                  {order.quantity} × {order.tier} · {events.find((event) => event.slug === order.eventSlug)?.title}
+                  {order.quantity} × {order.tier} · {order.eventTitle}
                 </p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="font-num text-sm font-bold text-foreground-950">{formatKsh(order.total)}</span>
@@ -215,10 +256,10 @@ export default function OrganizerOrdersPage() {
             <Button variant="ghost" onClick={() => setActiveId(null)}>
               Close
             </Button>
-            <Button variant="outline" onClick={() => pushToast("Ticket resent to the buyer by email and SMS.", "success")}>
+            <Button variant="outline" disabled title="Ticket resending is not implemented yet">
               Resend tickets
             </Button>
-            <Button variant="danger" onClick={() => setRefundOpen(true)}>
+            <Button variant="danger" disabled title="Refund processing is unavailable until payment settlement is connected">
               Refund order
             </Button>
           </>
@@ -229,7 +270,7 @@ export default function OrganizerOrdersPage() {
             {[
               ["Buyer", active.buyer],
               ["Phone", active.phone],
-              ["Event", events.find((event) => event.slug === active.eventSlug)?.title ?? active.eventSlug],
+              ["Event", active.eventTitle],
               ["Category", `${active.quantity} × ${active.tier}`],
               ["Total paid", formatKsh(active.total)],
               ["Platform commission", formatKsh(active.commission)],

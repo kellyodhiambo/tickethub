@@ -67,11 +67,11 @@ type PublicLayoutProps = {
 export default function PublicLayout({ children, transparentHeader = false }: PublicLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { notificationsRead } = useApp();
+  const { notifications } = useApp();
   const { user, profile } = useAuth();
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const unread = 4 - notificationsRead.length;
+  const unread = notifications.filter((item) => !item.read).length;
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -309,7 +309,7 @@ function Footer() {
             <BrandMark />
             <p className="mt-3 max-w-xs text-xs leading-relaxed text-secondary-800">
               Kenya&apos;s ticketing marketplace for concerts, festivals, comedy and conferences.
-              Secure M-Pesa checkout, instant QR tickets and fast gate entry.
+              Discover events and manage tickets in one account. Online ticket payments are being connected.
             </p>
             <div className="mt-4 flex items-center gap-2">
               {["ri-instagram-line", "ri-twitter-x-line", "ri-facebook-circle-line", "ri-tiktok-line"].map((icon) => (
@@ -357,7 +357,7 @@ function Footer() {
         <div className="mt-8 flex flex-col gap-3 border-t border-secondary-300 pt-5 text-[11px] text-secondary-800 sm:flex-row sm:items-center sm:justify-between">
           <p>© 2026 Dala Tickets Ltd — Nairobi, Kenya</p>
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span>Payments powered by M-Pesa</span>
+            <span>Ticket payments coming soon</span>
             <span className="hidden sm:inline">·</span>
             <span>Demo environment — no live money movement</span>
           </p>

@@ -1,18 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, Input, Label, Modal, Select, TableWrap, Td, Th } from "@/components/base/ui";
 import { formatKsh } from "@/lib/helpers";
 import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
-import { organizerKpis } from "@/mocks/dashboard";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/store/AuthProvider";
 import { useApp } from "@/store/AppStore";
 
+type WithdrawalRow = { id: string; reference: string; amount: number; method: string; destination: string; requested_at: string; status: string; note: string | null };
+
 export default function WithdrawalsPage() {
-  const { withdrawals, requestWithdrawal, pushToast } = useApp();
+  const { user } = useAuth();
+  const { pushToast } = useApp();
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (!user?.id) return;
+    void supabase.from("organizer_withdrawals").select("id,reference,amount,method,destination,requested_at,status,note").eq("organizer_id", user.id).order("requested_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) setLoadError(error.message);
+        else setWithdrawals((data ?? []) as WithdrawalRow[]);
+      });
+  }, [user?.id]);
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("96000");
+  const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("M-Pesa");
-  const [destination, setDestination] = useState("+254 712 000 118");
+  const [destination, setDestination] = useState("");
   const [confirmCode, setConfirmCode] = useState("");
 
   const pending = withdrawals.filter((item) => item.status === "Pending" || item.status === "Processing");
@@ -24,7 +38,7 @@ export default function WithdrawalsPage() {
       pushToast("The minimum withdrawal is KSh 1,000.", "danger");
       return;
     }
-    if (value > organizerKpis.availableBalance) {
+    if (value > 0) {
       pushToast("That exceeds your available balance.", "danger");
       return;
     }
@@ -32,7 +46,7 @@ export default function WithdrawalsPage() {
       pushToast("Type WITHDRAW to confirm this financial action.", "danger");
       return;
     }
-    requestWithdrawal(value, method, destination);
+    pushToast("Payout requests are disabled until the payment settlement API is connected.", "warning");
     setOpen(false);
     setConfirmCode("");
     pushToast("Withdrawal requested — finance will review and settle it.", "success");
@@ -43,17 +57,17 @@ export default function WithdrawalsPage() {
       variant="organizer"
       nav={organizerNav}
       mobileNav={organizerMobileNav}
-      userName="DalaLive Events"
-      userRole="Verified organizer · Kisumu"
-      initials="DL"
+      userName="Organizer"
+      userRole="Organizer"
+      initials="OR"
       title="Withdrawals"
       description="Move cleared earnings to M-Pesa or a bank account"
       actions={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-foreground-600">
-            Settlements typically clear within 2 business days of approval
+            <p className="text-[11px] text-foreground-600">
+            Payout requests are disabled until payment settlement is connected
           </p>
-          <Button size="sm" onClick={() => setOpen(true)}>
+          <Button size="sm" disabled title="Available after Kingdom settlement is connected" onClick={() => setOpen(true)}>
             <i className="ri-add-line" /> Request withdrawal
           </Button>
         </div>
@@ -65,16 +79,16 @@ export default function WithdrawalsPage() {
             Available to withdraw
           </p>
           <p className="mt-1 font-num text-3xl font-extrabold text-foreground-950">
-            {formatKsh(organizerKpis.availableBalance)}
+            Unavailable
           </p>
           <p className="mt-1 text-[11px] text-foreground-500">
-            Cleared funds only. {formatKsh(organizerKpis.pendingSettlement)} is still pending settlement.
+            Settlement balances are not available until Kingdom confirms cleared funds.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setOpen(true)}>
+            <Button size="sm" disabled title="Available after Kingdom settlement is connected" onClick={() => setOpen(true)}>
               Withdraw to M-Pesa
             </Button>
-            <Button
+            <Button disabled title="Available after Kingdom settlement is connected"
               size="sm"
               variant="outline"
               onClick={() => {
@@ -93,16 +107,16 @@ export default function WithdrawalsPage() {
             <div className="flex items-center justify-between rounded-md border border-background-200 p-2.5">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-foreground-900">M-Pesa</p>
-                <p className="text-[10px] text-foreground-500">+254 712 000 118 · DalaLive Events</p>
+                <p className="text-[10px] text-foreground-500">No payout account is saved</p>
               </div>
-              <Badge tone="success">Verified</Badge>
+              <Badge tone="neutral">Not configured</Badge>
             </div>
             <div className="flex items-center justify-between rounded-md border border-background-200 p-2.5">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-foreground-900">Bank transfer</p>
-                <p className="text-[10px] text-foreground-500">KCB •••• 4471 · DalaLive Events Ltd</p>
+                <p className="text-[10px] text-foreground-500">Available when bank settlement is connected</p>
               </div>
-              <Badge tone="neutral">Name matched</Badge>
+              <Badge tone="neutral">Not configured</Badge>
             </div>
           </div>
           <p className="mt-2 text-[10px] leading-relaxed text-foreground-500">
@@ -115,9 +129,9 @@ export default function WithdrawalsPage() {
       <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {[
           { label: "Pending requests", value: String(pending.length) },
-          { label: "Pending amount", value: formatKsh(pending.reduce((sum, item) => sum + item.amount, 0), { compact: true }) },
+          { label: "Pending amount", value: formatKsh(pending.reduce((sum, item) => sum + Number(item.amount), 0), { compact: true }) },
           { label: "Completed payouts", value: String(completed.length) },
-          { label: "Lifetime withdrawn", value: formatKsh(completed.reduce((sum, item) => sum + item.amount, 0), { compact: true }) },
+          { label: "Lifetime withdrawn", value: formatKsh(completed.reduce((sum, item) => sum + Number(item.amount), 0), { compact: true }) },
         ].map((item) => (
           <Card key={item.label} className="p-3">
             <p className="text-[10px] font-label font-semibold uppercase tracking-wider text-foreground-500">{item.label}</p>
@@ -126,6 +140,7 @@ export default function WithdrawalsPage() {
         ))}
       </div>
 
+      {loadError && <p role="alert" className="mt-3 text-sm text-accent-700">Could not load payout history: {loadError}</p>}
       <div className="mt-3">
         <TableWrap>
           <thead>
@@ -145,7 +160,7 @@ export default function WithdrawalsPage() {
                 <Td className="font-num text-xs font-semibold">{formatKsh(item.amount)}</Td>
                 <Td className="text-xs">{item.method}</Td>
                 <Td className="text-xs text-foreground-600">{item.destination}</Td>
-                <Td className="text-xs text-foreground-600">{item.requestedAt}</Td>
+                <Td className="text-xs text-foreground-600">{new Date(item.requested_at).toLocaleString()}</Td>
                 <Td>
                   <Badge tone={item.status === "Completed" ? "success" : item.status === "Rejected" ? "danger" : "warning"}>
                     {item.status}
@@ -187,7 +202,7 @@ export default function WithdrawalsPage() {
             <Label htmlFor="amount">Amount (KSh)</Label>
             <Input id="amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" />
             <p className="mt-1 text-[10px] text-foreground-500">
-              Available: {formatKsh(organizerKpis.availableBalance)} · minimum KSh 1,000
+              Settlement API pending · minimum KSh 1,000
             </p>
           </div>
           <div>
@@ -220,3 +235,4 @@ export default function WithdrawalsPage() {
     </DashboardShell>
   );
 }
+

@@ -7,9 +7,8 @@ import EventCard from "@/components/feature/EventCard";
 import StayReminder from "@/components/feature/StayReminder";
 import { cn, formatEventDate, formatKsh } from "@/lib/helpers";
 import { tierLegend, tierTheme } from "@/lib/tierTheme";
-import { events } from "@/mocks/events";
-import { organizers } from "@/mocks/organizers";
-import { useEvent } from "@/hooks/useEvents";
+import { useEvent, useEvents } from "@/hooks/useEvents";
+import { DataError, DataLoading } from "@/components/feature/DataStates";
 import { SITE_URL, setPageSeo } from "@/lib/seo";
 import { useApp } from "@/store/AppStore";
 
@@ -20,8 +19,8 @@ export default function EventDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { pushToast, favorites, toggleFavorite } = useApp();
-  const { event: liveEvent } = useEvent(slug);
-  const event = liveEvent ?? events.find((item) => item.slug === slug);
+  const { event, loading, error, reload } = useEvent(slug);
+  const { events: availableEvents } = useEvents();
   const [selectedTier, setSelectedTier] = useState(event?.tiers[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
 
@@ -83,11 +82,13 @@ export default function EventDetailPage() {
     });
   }, [event]);
 
-  const organizer = organizers.find((item) => item.id === event?.organizerId);
   const similar = useMemo(
-    () => events.filter((item) => item.id !== event?.id && item.category === event?.category).slice(0, 3),
-    [event]
+    () => availableEvents.filter((item) => item.id !== event?.id && item.category === event?.category).slice(0, 3),
+    [availableEvents, event]
   );
+
+  if (loading) return <PublicLayout><DataLoading label="Loading event" /></PublicLayout>;
+  if (error) return <PublicLayout><DataError message={error} onRetry={reload} /></PublicLayout>;
 
   if (!event) {
     return (
@@ -279,7 +280,7 @@ export default function EventDetailPage() {
           <div className="mt-7 rounded-card border border-background-200 bg-background-100 p-4">
             <div className="flex items-start gap-3">
               <span className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-foreground-950 text-xs font-bold text-background-50">
-                {organizer?.initials ?? "DL"}
+                {event.organizerName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
@@ -287,9 +288,8 @@ export default function EventDetailPage() {
                   {event.verified && <i className="ri-verified-badge-fill text-sm text-accent-600" />}
                 </div>
                 <p className="mt-0.5 text-[11px] text-foreground-500">
-                  {organizer?.city} · {organizer?.eventsHosted} events hosted · {organizer?.followers} followers
+                  {event.city} · Event organizer
                 </p>
-                <p className="mt-2 text-xs leading-relaxed text-foreground-600">{organizer?.bio}</p>
               </div>
             </div>
           </div>
@@ -436,7 +436,7 @@ export default function EventDetailPage() {
                   size="sm"
                   block
                   className="mt-2"
-                  onClick={() => pushToast("You are on the waitlist — we will alert you by SMS.", "success")}
+                  disabled
                 >
                   Join waitlist
                 </Button>
@@ -445,7 +445,7 @@ export default function EventDetailPage() {
 
             <div className="mt-3 space-y-1.5 text-[10px] text-foreground-500">
               <p className="flex items-center gap-1.5">
-                <i className="ri-smartphone-line text-accent-600" /> M-Pesa STK Push and card supported
+                <i className="ri-smartphone-line text-accent-600" /> Payment collection is not connected yet
               </p>
               <p className="flex items-center gap-1.5">
                 <i className="ri-shield-check-line text-accent-600" /> Ticket issued after payment confirmation

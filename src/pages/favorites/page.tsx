@@ -3,11 +3,12 @@ import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
 import { Button, EmptyState } from "@/components/base/ui";
 import EventCard from "@/components/feature/EventCard";
-import { events } from "@/mocks/events";
 import { useApp } from "@/store/AppStore";
+import { useEvents } from "@/hooks/useEvents";
 
 export default function FavoritesPage() {
   const { favorites } = useApp();
+  const { events, loading, error } = useEvents();
   const saved = events.filter((event) => favorites.includes(event.id));
 
   return (
@@ -23,7 +24,11 @@ export default function FavoritesPage() {
       </div>
 
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 md:py-8">
-        {saved.length === 0 ? (
+        {loading ? (
+          <p className="py-10 text-center text-sm text-foreground-500">Loading saved events…</p>
+        ) : error ? (
+          <p role="alert" className="py-10 text-center text-sm text-accent-700">{error}</p>
+        ) : saved.length === 0 ? (
           <EmptyState
             icon="ri-heart-3-line"
             title="No saved events yet"

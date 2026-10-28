@@ -4,29 +4,29 @@ import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card } from "@/components/base/ui";
 import AppearancePicker from "@/components/feature/AppearancePicker";
-import { notifications } from "@/mocks/dashboard";
 import { formatKsh, initialsOf } from "@/lib/helpers";
 import { useApp } from "@/store/AppStore";
 import { useAuth } from "@/store/AuthProvider";
 import { supabase } from "@/lib/supabase";
 
 const toggles = [
-  { id: "reminders", label: "Event reminders", body: "A reminder 24 hours before doors open.", on: true },
-  { id: "soldout", label: "Sold-out alerts", body: "Tell me when a saved event releases tickets.", on: true },
-  { id: "promos", label: "Promotions", body: "Occasional offers from organizers I follow.", on: false },
-  { id: "sms", label: "SMS notifications", body: "Ticket codes and gate changes by SMS.", on: true },
+  { id: "notification_email", label: "Email notifications", body: "Account and event updates sent to your email.", on: true },
+  { id: "notification_inapp", label: "In-app notifications", body: "Updates shown in your Dala account.", on: true },
 ];
 
 export default function AccountPage() {
   const navigate = useNavigate();
-  const { orders, tickets, pushToast } = useApp();
+  const { orders, tickets, notifications, pushToast } = useApp();
   const { user, profile, loading: authLoading, refreshProfile, signOut } = useAuth();
   const [prefs, setPrefs] = useState(toggles);
   const [form, setForm] = useState({ full_name: "", location: "" });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (profile) setForm({ full_name: profile.full_name ?? "", location: profile.location ?? "" });
+    if (profile) {
+      setForm({ full_name: profile.full_name ?? "", location: profile.location ?? "" });
+      setPrefs(toggles.map((toggle) => ({ ...toggle, on: Boolean((profile as unknown as Record<string, unknown>)[toggle.id]) })));
+    }
   }, [profile]);
 
   const saveProfile = async () => {
@@ -247,11 +247,13 @@ export default function AccountPage() {
                       <p className="text-[11px] text-foreground-500">{pref.body}</p>
                     </div>
                     <button
-                      onClick={() =>
-                        setPrefs((current) =>
-                          current.map((item) => (item.id === pref.id ? { ...item, on: !item.on } : item))
-                        )
-                      }
+                      onClick={async () => {
+                        const next = !pref.on;
+                        const { error } = await supabase.from("users").update({ [pref.id]: next }).eq("id", profile?.id);
+                        if (error) { pushToast(error.message, "danger"); return; }
+                        setPrefs((current) => current.map((item) => item.id === pref.id ? { ...item, on: next } : item));
+                        await refreshProfile();
+                      }}
                       className={`relative h-6 w-11 flex-none cursor-pointer rounded-full transition-colors ${
                         pref.on ? "bg-primary-500" : "bg-background-300"
                       }`}
@@ -286,13 +288,13 @@ export default function AccountPage() {
                     <i className="ri-smartphone-line" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-foreground-900">M-Pesa ···· 908</p>
-                    <p className="text-[10px] text-foreground-500">Primary collection number</p>
+                    <p className="text-xs font-semibold text-foreground-900">No payment method saved</p>
+                    <p className="text-[10px] text-foreground-500">Payment details are collected securely during checkout.</p>
                   </div>
-                  <Badge tone="success">Default</Badge>
+                  <Badge tone="neutral">None</Badge>
                 </div>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => pushToast("Add a payment method at checkout.", "info")}>
-                  <i className="ri-add-line" /> Add method
+                <Button variant="outline" size="sm" className="mt-3" disabled>
+                  <i className="ri-add-line" /> Checkout only
                 </Button>
               </Card>
 
@@ -302,9 +304,10 @@ export default function AccountPage() {
                   {notifications.slice(0, 3).map((item) => (
                     <div key={item.id} className="rounded-md bg-background-100 p-2.5">
                       <p className="text-[11px] font-semibold text-foreground-900">{item.title}</p>
-                      <p className="mt-0.5 text-[10px] text-foreground-500">{item.time}</p>
+                    <p className="mt-0.5 text-[10px] text-foreground-500">{new Date(item.created_at).toLocaleString()}</p>
                     </div>
                   ))}
+                  {!notifications.length && <p className="py-3 text-[11px] text-foreground-500">No notifications yet.</p>}
                 </div>
               </Card>
             </div>

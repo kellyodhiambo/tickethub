@@ -18,6 +18,9 @@ export type Profile = {
   verified: boolean;
   location: string | null;
   avatar_url: string | null;
+  bio: string | null;
+  notification_email: boolean | null;
+  notification_inapp: boolean | null;
 };
 
 type AuthState = {
@@ -35,7 +38,7 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const PROFILE_COLUMNS = "id, email, full_name, role, verified, location, avatar_url";
+const PROFILE_COLUMNS = "id, email, full_name, role, verified, location, avatar_url, bio, notification_email, notification_inapp";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -99,7 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // First sign-in: create the profile row for this account.
       const meta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
       const fullName = typeof meta.full_name === "string" ? meta.full_name : null;
-      const role = typeof meta.role === "string" && meta.role ? meta.role : "member";
+      // User metadata is supplied at signup and is not an authorization source.
+      // New accounts always start as buyers; an admin must grant organizer access.
+      const role = "member";
 
       const { error: upsertError } = await supabase
         .from("users")
@@ -146,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileLoading,
       profileError,
       isAdmin: profile?.role === "admin",
-      isOrganizer: profile?.role === "organizer" || profile?.role === "creator",
+      isOrganizer: profile?.role === "organizer",
       refreshProfile,
       signOut,
     }),

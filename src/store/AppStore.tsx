@@ -3,25 +3,16 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
 import type { WalletTicket, ScanEntry, StaffMember, Withdrawal, OrderRecord } from "@/types";
-import { seedScans, staffMembers, walletTickets, withdrawals as seedWithdrawals, orders as seedOrders } from "@/mocks/dashboard";
-import { makeReference, makeTicketCode } from "@/lib/helpers";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/store/AuthProvider";
 
 type Toast = { id: string; message: string; tone: "success" | "danger" | "warning" | "info" };
-
-type PurchasePayload = {
-  eventSlug: string;
-  tierName: string;
-  quantity: number;
-  attendee: string;
-  buyer: string;
-  phone: string;
-  total: number;
-  commission: number;
-};
+export type AppNotification = { id: string; title: string; body: string; link: string | null; read: boolean; created_at: string };
 
 type AppState = {
   favorites: string[];
@@ -32,8 +23,8 @@ type AppState = {
   staff: StaffMember[];
   withdrawals: Withdrawal[];
   notificationsRead: string[];
+  notifications: AppNotification[];
   markNotificationsRead: () => void;
-  issueTickets: (payload: PurchasePayload) => WalletTicket[];
   validateTicket: (code: string, gate: string) => { result: ScanEntry["result"]; entry: ScanEntry; ticket?: WalletTicket };
   inviteStaff: (member: { name: string; phone: string; gate: string }) => void;
   revokeStaff: (id: string) => void;
@@ -46,13 +37,15 @@ type AppState = {
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [favorites, setFavorites] = useState<string[]>(["evt-1", "evt-2"]);
-  const [tickets, setTickets] = useState<WalletTicket[]>(walletTickets);
-  const [orders, setOrders] = useState<OrderRecord[]>(seedOrders);
-  const [scans, setScans] = useState<ScanEntry[]>(seedScans);
-  const [staff, setStaff] = useState<StaffMember[]>(staffMembers);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>(seedWithdrawals);
+  const { user } = useAuth();
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [tickets, setTickets] = useState<WalletTicket[]>([]);
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [scans, setScans] = useState<ScanEntry[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [notificationsRead, setNotificationsRead] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const pushToast = useCallback((message: string, tone: Toast["tone"] = "success") => {
@@ -67,48 +60,92 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!user?.id) {
+        setFavorites([]);
+        setTickets([]);
+        setOrders([]);
+        setWithdrawals([]);
+        setNotifications([]);
+        return;
+      }
+      const [favoriteResult, ticketResult, orderResult, withdrawalResult, notificationResult] = await Promise.all([
+        supabase.from("event_favorites").select("event_id").eq("user_id", user.id),
+        supabase.from("tickets").select("id,event_id,tier_name,qr_code,status,payment_status,payment_reference,order_reference,attendee,buyer_name,total_amount,price,created_at,gate,scanned_at,events(slug)").eq("user_id", user.id).in("payment_status", ["completed", "paid"]).not("qr_code", "is", null).order("created_at", { ascending: false }),
+        supabase.from("orders").select("id,reference,event_id,buyer,phone,tier,quantity,total,commission,status,channel,created_at,events(slug)").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("organizer_withdrawals").select("*").eq("organizer_id", user.id).order("requested_at", { ascending: false }),
+        supabase.from("notifications").select("id,title,body,link,read,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
+      ]);
+      if (!active) return;
+      if (!favoriteResult.error) setFavorites((favoriteResult.data ?? []).map((row) => row.event_id));
+      if (!ticketResult.error) setTickets((ticketResult.data ?? []).map((raw) => {
+        const row = raw as Record<string, unknown>;
+        const event = row.events as { slug?: string } | null;
+        const state = String(row.status ?? "").toLowerCase();
+        return {
+          id: String(row.id), eventId: String(row.event_id), price: Number(row.total_amount ?? row.price ?? 0), code: String(row.qr_code),
+          orderReference: String(row.order_reference ?? row.payment_reference ?? ""),
+          eventSlug: String(event?.slug ?? row.event_id ?? ""), tier: String(row.tier_name ?? "General"),
+          attendee: String(row.attendee ?? row.buyer_name ?? "Ticket holder"),
+          status: state === "used" || Boolean(row.scanned_at) ? "Used" : state === "cancelled" ? "Cancelled" : "Valid",
+          issuedAt: String(row.created_at ?? "").slice(0, 10),
+          gate: row.gate ? String(row.gate) : undefined,
+          scannedAt: row.scanned_at ? String(row.scanned_at) : undefined,
+        };
+      }));
+      if (!orderResult.error) setOrders((orderResult.data ?? []).map((raw) => {
+        const row = raw as Record<string, unknown>;
+        const event = row.events as { slug?: string } | null;
+        const state = String(row.status ?? "pending").toLowerCase();
+        return {
+          id: String(row.id), reference: String(row.reference ?? row.id),
+          eventSlug: String(event?.slug ?? row.event_id ?? ""), buyer: String(row.buyer ?? ""),
+          phone: String(row.phone ?? ""), tier: String(row.tier ?? "General"), quantity: Number(row.quantity ?? 1),
+          total: Number(row.total ?? 0), commission: Number(row.commission ?? 0),
+          status: state === "paid" || state === "completed" ? "Paid" : state === "refunded" ? "Refunded" : state === "failed" ? "Failed" : "Pending",
+          channel: String(row.channel ?? ""), createdAt: String(row.created_at ?? "").slice(0, 16).replace("T", " "),
+        };
+      }));
+      if (!withdrawalResult.error) setWithdrawals((withdrawalResult.data ?? []).map((row) => ({
+        id: row.id, reference: row.reference, amount: Number(row.amount), method: row.method,
+        destination: row.destination, status: row.status, requestedAt: String(row.requested_at).slice(0, 10),
+        note: row.note ?? undefined,
+      })));
+      if (!notificationResult.error) setNotifications((notificationResult.data ?? []).map((row) => ({ ...row, link: row.link ?? null, read: Boolean(row.read) })));
+    };
+    void load();
+    return () => { active = false; };
+  }, [user?.id]);
+
   const toggleFavorite = useCallback((id: string) => {
-    setFavorites((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
-  }, []);
+    if (!user?.id) {
+      pushToast("Sign in to save events to your account.", "warning");
+      return;
+    }
+    const saved = favorites.includes(id);
+    void (async () => {
+      const result = saved
+        ? await supabase.from("event_favorites").delete().eq("user_id", user.id).eq("event_id", id)
+        : await supabase.from("event_favorites").insert({ user_id: user.id, event_id: id });
+      if (result.error) {
+        pushToast(result.error.message, "danger");
+        return;
+      }
+      setFavorites((current) => saved ? current.filter((item) => item !== id) : [...current, id]);
+    })();
+  }, [favorites, pushToast, user?.id]);
 
   const markNotificationsRead = useCallback(() => {
-    setNotificationsRead(["n-1", "n-2", "n-3", "n-4"]);
-  }, []);
-
-  const issueTickets = useCallback((payload: PurchasePayload) => {
-    const reference = makeReference();
-    const created: WalletTicket[] = Array.from({ length: payload.quantity }).map((_, index) => ({
-      id: `${reference}-${index}`,
-      code: makeTicketCode(reference, payload.tierName, index + 1),
-      orderReference: reference,
-      eventSlug: payload.eventSlug,
-      tier: payload.tierName,
-      attendee: index === 0 ? payload.attendee : `Guest ${index + 1} (${payload.attendee.split(" ")[0]})`,
-      status: "Valid",
-      issuedAt: new Date().toISOString().slice(0, 10),
-    }));
-    setTickets((current) => [...created, ...current]);
-    setOrders((current) => [
-      {
-        id: reference,
-        reference,
-        eventSlug: payload.eventSlug,
-        buyer: payload.buyer,
-        phone: payload.phone,
-        tier: payload.tierName,
-        quantity: payload.quantity,
-        total: payload.total,
-        commission: payload.commission,
-        status: "Paid",
-        channel: "M-Pesa",
-        createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
-      },
-      ...current,
-    ]);
-    return created;
-  }, []);
+    if (!user?.id) return;
+    void (async () => {
+      const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+      if (error) { pushToast(error.message, "danger"); return; }
+      setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+      setNotificationsRead((current) => [...new Set([...current, ...notifications.map((item) => item.id)])]);
+    })();
+  }, [notifications, pushToast, user?.id]);
 
   const validateTicket = useCallback(
     (code: string, gate: string) => {
@@ -172,20 +209,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const requestWithdrawal = useCallback(
     (amount: number, method: string, destination: string) => {
-      setWithdrawals((current) => [
-        {
-          id: `wd-${Date.now()}`,
-          reference: `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-          amount,
-          method,
-          destination,
-          status: "Pending",
-          requestedAt: new Date().toISOString().slice(0, 10),
-        },
-        ...current,
-      ]);
+      if (!user?.id) {
+        pushToast("Sign in to request a withdrawal.", "warning");
+        return;
+      }
+      void (async () => {
+        const { data, error } = await supabase.from("organizer_withdrawals").insert({
+          organizer_id: user.id, amount, method, destination,
+        }).select("*").single();
+        if (error) {
+          pushToast(error.message, "danger");
+          return;
+        }
+        setWithdrawals((current) => [{
+          id: data.id, reference: data.reference, amount: Number(data.amount), method: data.method,
+          destination: data.destination, status: data.status,
+          requestedAt: String(data.requested_at).slice(0, 10),
+        }, ...current]);
+      })();
     },
-    []
+    [pushToast, user?.id]
   );
 
   const value = useMemo<AppState>(
@@ -198,8 +241,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staff,
       withdrawals,
       notificationsRead,
+      notifications,
       markNotificationsRead,
-      issueTickets,
       validateTicket,
       inviteStaff,
       revokeStaff,
@@ -217,8 +260,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staff,
       withdrawals,
       notificationsRead,
+      notifications,
       markNotificationsRead,
-      issueTickets,
       validateTicket,
       inviteStaff,
       revokeStaff,

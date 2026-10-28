@@ -49,7 +49,7 @@ export default function SignUpPage() {
           emailRedirectTo: authCallbackUrl,
           data: {
             full_name: fullName.trim(),
-            role: intent === "organizer" ? "organizer" : "member",
+            requested_role: intent,
           },
         },
       });
@@ -60,7 +60,7 @@ export default function SignUpPage() {
       }
 
       if (data.session) {
-        navigate("/account", { replace: true });
+        navigate(intent === "organizer" ? "/organizer/apply" : "/account", { replace: true });
         return;
       }
 
@@ -112,7 +112,7 @@ export default function SignUpPage() {
           type="signup"
           hint="Your password is already saved — verifying the code signs you in."
           onBack={() => setAwaitingCode(false)}
-          onVerified={() => navigate("/account", { replace: true })}
+          onVerified={() => navigate(intent === "organizer" ? "/organizer/apply" : "/account", { replace: true })}
         />
       ) : (
         <>
@@ -191,8 +191,8 @@ export default function SignUpPage() {
 
             {intent === "organizer" && (
               <p className="rounded-md border border-secondary-200 bg-secondary-100 px-3 py-2 text-[11px] leading-relaxed text-secondary-900">
-                Organizer accounts can create events right away. Verification — business documents and
-                a payout account — is reviewed separately before the verified badge appears on your events.
+                Organizer access is reviewed before you can publish events. Create your account first,
+                then submit your organizer details for approval.
               </p>
             )}
 

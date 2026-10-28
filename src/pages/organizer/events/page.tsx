@@ -1,37 +1,73 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, EmptyState, Input, Modal, Progress, Select } from "@/components/base/ui";
 import { cn, formatEventDate, formatKsh, formatNumber } from "@/lib/helpers";
 import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
-import { events } from "@/mocks/events";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
+import { fetchEventsByOrganizer } from "@/lib/eventsApi";
+import { supabase } from "@/lib/supabase";
+import type { EventItem } from "@/types";
 
-type ManagedEvent = {
-  id: string;
-  status: "Live" | "Draft" | "Paused" | "Sold out" | "Completed";
-};
+type EventStatus = "Live" | "Draft" | "Paused" | "Cancelled" | "Sold out" | "Completed";
 
-const initialStatus: Record<string, ManagedEvent["status"]> = {
-  "evt-1": "Live",
-  "evt-2": "Live",
-  "evt-3": "Paused",
-  "evt-5": "Live",
-  "evt-8": "Draft",
-  "evt-11": "Sold out",
-};
+function statusForEvent(event: EventItem): EventStatus {
+  if (event.status === "cancelled" || event.status === "canceled") return "Cancelled";
+  if (event.status === "paused") return "Paused";
+  if (event.status === "draft") return "Draft";
+  if (event.soldOut) return "Sold out";
+  if (event.date < new Date().toISOString().slice(0, 10)) return "Completed";
+  return "Live";
+}
 
 export default function OrganizerEventsPage() {
   const { pushToast } = useApp();
-  const [statuses, setStatuses] = useState(initialStatus);
+  const { user } = useAuth();
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [action, setAction] = useState<{ type: "pause" | "clone" | "cancel"; eventId: string } | null>(null);
+  const [cancelConfirmation, setCancelConfirmation] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEvents = async () => {
+      setEvents([]);
+      setStatuses({});
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const ownedEvents = await fetchEventsByOrganizer(user.id);
+        if (!active) return;
+        setEvents(ownedEvents);
+        setStatuses(Object.fromEntries(ownedEvents.map((event) => [event.id, statusForEvent(event)])));
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : "Could not load your events.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void loadEvents();
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   const managed = useMemo(
-    () => events.filter((event) => statuses[event.id]),
-    [statuses]
+    () => events,
+    [events]
   );
 
   const filtered = managed.filter((event) => {
@@ -43,24 +79,32 @@ export default function OrganizerEventsPage() {
     return true;
   });
 
-  const activeEvent = action ? events.find((event) => event.id === action.eventId) : null;
+  const activeEvent = action ? managed.find((event) => event.id === action.eventId) : null;
 
-  const applyAction = () => {
+  const applyAction = async () => {
     if (!action) return;
-    if (action.type === "pause") {
-      setStatuses((current) => ({
-        ...current,
-        [action.eventId]: current[action.eventId] === "Paused" ? "Live" : "Paused",
-      }));
-      pushToast(statuses[action.eventId] === "Paused" ? "Ticket sales resumed." : "Ticket sales paused.", "info");
-    }
     if (action.type === "clone") {
-      pushToast(`“${activeEvent?.title}” cloned as a draft — check the date and ticket tiers.`, "success");
+      pushToast("Event cloning is not available yet.", "warning");
+      setAction(null);
+      return;
+    }
+    if (action.type === "pause") {
+      const resume = statuses[action.eventId] === "Paused";
+      const { error } = await supabase.from("events").update({ status: resume ? "upcoming" : "paused" }).eq("id", action.eventId).eq("organizer_id", user?.id);
+      if (error) { pushToast(error.message, "danger"); return; }
+      setStatuses((current) => ({ ...current, [action.eventId]: resume ? "Live" : "Paused" }));
+      setEvents((current) => current.map((event) => event.id === action.eventId ? { ...event, status: resume ? "upcoming" : "paused" } : event));
+      pushToast(resume ? "Ticket sales resumed." : "Ticket sales paused.", "success");
     }
     if (action.type === "cancel") {
-      setStatuses((current) => ({ ...current, [action.eventId]: "Completed" }));
-      pushToast("Event cancellation started — refund queue created.", "warning");
+      if (cancelConfirmation !== "CANCELLED") { pushToast("Type CANCELLED to confirm this action.", "warning"); return; }
+      const { error } = await supabase.from("events").update({ status: "cancelled" }).eq("id", action.eventId).eq("organizer_id", user?.id);
+      if (error) { pushToast(error.message, "danger"); return; }
+      setStatuses((current) => ({ ...current, [action.eventId]: "Cancelled" }));
+      setEvents((current) => current.map((event) => event.id === action.eventId ? { ...event, status: "cancelled" } : event));
+      pushToast("Event cancelled. No refunds were issued; contact support to coordinate attendee refunds.", "warning");
     }
+    setCancelConfirmation("");
     setAction(null);
   };
 
@@ -120,10 +164,16 @@ export default function OrganizerEventsPage() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="py-12 text-center text-sm text-foreground-600">Loading your events…</div>
+      ) : loadError ? (
+        <div role="alert" className="rounded-md border border-primary-200 bg-primary-50 p-4 text-sm text-primary-900">
+          Could not load your events: {loadError}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon="ri-calendar-2-line"
-          title="No events in this view"
+          title={managed.length === 0 ? "You haven’t created any events yet" : "No events in this view"}
           description="Create your first event and publish it in minutes with the guided wizard."
           action={
             <Link to="/organizer/events/new">
@@ -176,9 +226,7 @@ export default function OrganizerEventsPage() {
                         <i className="ri-external-link-line" /> Public page
                       </Button>
                     </Link>
-                    <Button size="sm" variant="ghost" onClick={() => pushToast("Event editor opens in the wizard.", "info")}>
-                      <i className="ri-edit-line" /> Edit
-                    </Button>
+                    <Button size="sm" variant="ghost" disabled title="Event editing is not available yet"><i className="ri-edit-line" /> Edit</Button>
                     <div className="flex gap-1">
                       <button
                         onClick={() => setAction({ type: "pause", eventId: event.id })}
@@ -188,6 +236,8 @@ export default function OrganizerEventsPage() {
                         <i className={status === "Paused" ? "ri-play-line" : "ri-pause-line"} />
                       </button>
                       <button
+                        disabled
+                        title="Event cloning is not available yet"
                         onClick={() => setAction({ type: "clone", eventId: event.id })}
                         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-background-300 text-foreground-600 hover:bg-background-100"
                         aria-label="Clone event"
@@ -212,7 +262,7 @@ export default function OrganizerEventsPage() {
 
       <Modal
         open={Boolean(action)}
-        onClose={() => setAction(null)}
+        onClose={() => { setAction(null); setCancelConfirmation(""); }}
         title={
           action?.type === "pause"
             ? statuses[action.eventId] === "Paused"
@@ -224,18 +274,18 @@ export default function OrganizerEventsPage() {
         }
         description={
           action?.type === "cancel"
-            ? "Cancelling starts the refund workflow for every paid order. This is a financial action and cannot be undone."
+            ? "This removes the event from public sale. It does not issue refunds; contact support to coordinate refunds until the bank settlement API is connected."
             : action?.type === "clone"
             ? "A draft copy is created with the same tiers. Dates and inventory are not copied automatically."
             : "You can resume any time. Live scans are unaffected."
         }
         footer={
           <>
-            <Button variant="ghost" onClick={() => setAction(null)}>
+            <Button variant="ghost" onClick={() => { setAction(null); setCancelConfirmation(""); }}>
               Keep as is
             </Button>
             <Button variant={action?.type === "cancel" ? "danger" : "primary"} onClick={applyAction}>
-              {action?.type === "cancel" ? "Confirm cancellation" : "Confirm"}
+              {action?.type === "cancel" ? "Cancel event" : "Confirm"}
             </Button>
           </>
         }
@@ -252,7 +302,7 @@ export default function OrganizerEventsPage() {
         {action?.type === "cancel" && (
           <div className="mt-3">
             <p className="mb-1.5 text-[11px] font-semibold text-foreground-700">Type CANCELLED to confirm</p>
-            <Input placeholder="CANCELLED" />
+            <Input value={cancelConfirmation} onChange={(event) => setCancelConfirmation(event.target.value)} placeholder="CANCELLED" />
           </div>
         )}
       </Modal>

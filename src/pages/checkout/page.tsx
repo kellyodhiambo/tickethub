@@ -6,7 +6,8 @@ import StayReminder from "@/components/feature/StayReminder";
 import { Badge, Button, Input, Label, Select } from "@/components/base/ui";
 import { cn, formatEventDate, formatKsh } from "@/lib/helpers";
 import { tierTheme } from "@/lib/tierTheme";
-import { events } from "@/mocks/events";
+import { useEvent } from "@/hooks/useEvents";
+import { DataError, DataLoading } from "@/components/feature/DataStates";
 import { useApp } from "@/store/AppStore";
 
 type Stage = "details" | "payment" | "pending" | "success" | "failed";
@@ -15,21 +16,23 @@ export default function CheckoutPage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { issueTickets, pushToast } = useApp();
+  const { pushToast } = useApp();
 
-  const event = events.find((item) => item.slug === slug);
+  const { event, loading, error, reload } = useEvent(slug);
   const tier = event?.tiers.find((item) => item.id === params.get("tier")) ?? event?.tiers[0];
-  const quantity = Math.max(1, Number(params.get("qty") ?? 1));
+  const requestedQuantity = Number(params.get("qty") ?? 1);
+  const quantity = Number.isFinite(requestedQuantity)
+    ? Math.min(10, Math.max(1, Math.floor(requestedQuantity)))
+    : 1;
   const isFree = tier?.price === 0;
 
   const [stage, setStage] = useState<Stage>(isFree ? "details" : "details");
-  const [name, setName] = useState("Amina Wanjiru");
-  const [email, setEmail] = useState("amina.wanjiru@example.co.ke");
-  const [phone, setPhone] = useState("+254 712 445 908");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [promo, setPromo] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
   const [method, setMethod] = useState<"mpesa" | "card">("mpesa");
-  const [reference, setReference] = useState("");
   const [failure, setFailure] = useState("");
 
   const subtotal = (tier?.price ?? 0) * quantity;
@@ -39,6 +42,9 @@ export default function CheckoutPage() {
   const commission = Math.round(subtotal * 0.1);
 
   const attendeeFields = useMemo(() => Array.from({ length: quantity }), [quantity]);
+
+  if (loading) return <PublicLayout><DataLoading label="Loading checkout" /></PublicLayout>;
+  if (error) return <PublicLayout><DataError message={error} onRetry={reload} /></PublicLayout>;
 
   if (!event || !tier) {
     return (
@@ -76,36 +82,18 @@ export default function CheckoutPage() {
     setStage("payment");
   };
 
-  const completeOrder = (channel?: string) => {
-    const orderRef = issueTickets({
-      eventSlug: event.slug,
-      tierName: tier.name,
-      quantity,
-      attendee: name,
-      buyer: name,
-      phone,
-      total,
-      commission,
-    });
-    setReference(orderRef[0]?.orderReference ?? "");
-    setStage("success");
-    pushToast(
-      channel === "Complimentary" ? "Free registration confirmed." : "Payment confirmed — tickets issued.",
-      "success"
+  const completeOrder = (_channel?: string) => {
+    setFailure(
+      isFree
+        ? "Free ticket registration is not connected yet. No ticket has been issued."
+        : "Kingdom ticket payments are not connected yet. No payment was collected and no ticket has been issued."
     );
+    setStage("failed");
   };
 
   const payWithMpesa = () => {
-    if (stage === "pending") return;
-    if (!/^(\+?254|0)\s?7\d{2}\s?\d{3}\s?\d{3}$/.test(phone.replace(/\s/g, ""))) {
-      setFailure("Enter a valid Kenyan number, e.g. +254 712 345 678.");
-      setStage("failed");
-      return;
-    }
-    setStage("pending");
-    window.setTimeout(() => {
-      completeOrder();
-    }, 2400);
+    setFailure("Kingdom ticket payments are not connected yet. No payment was collected and no ticket has been issued.");
+    setStage("failed");
   };
 
   return (
@@ -144,8 +132,7 @@ export default function CheckoutPage() {
             <div className="mb-4 rounded-card border border-primary-200 bg-primary-50 px-4 py-3">
               <p className="flex items-start gap-2 text-[11px] leading-relaxed text-primary-900">
                 <i className="ri-information-fill mt-0.5" />
-                Demo checkout — this environment simulates M-Pesa confirmation and does not move real
-                money. Tickets are only issued once payment is confirmed.
+                Preview only. Kingdom payment collection and ticket issuance are not connected yet. No payment or ticket can be completed here.
               </p>
             </div>
 
@@ -162,10 +149,6 @@ export default function CheckoutPage() {
                   issued to {email}. Your QR codes are ready in My Tickets.
                 </p>
                 <dl className="mt-4 grid gap-2 rounded-md border border-accent-200 bg-background-50 p-3 text-xs sm:grid-cols-2">
-                  <div>
-                    <dt className="text-foreground-500">Order reference</dt>
-                    <dd className="font-num font-bold text-foreground-950">{reference}</dd>
-                  </div>
                   <div>
                     <dt className="text-foreground-500">Amount</dt>
                     <dd className="font-num font-bold text-foreground-950">{isFree ? "Free" : formatKsh(total)}</dd>

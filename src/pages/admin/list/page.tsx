@@ -1,19 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, Modal, Select, TableWrap, Td, Th } from "@/components/base/ui";
 import { formatKsh, formatNumber } from "@/lib/helpers";
 import { adminMobileNav, adminNav } from "@/pages/organizer/nav";
-import {
-  adminEvents,
-  adminOrganizers,
-  adminPayouts,
-  adminRefunds,
-  adminTransactions,
-  adminUsers,
-} from "@/mocks/admin";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
+import { fetchAdminRows, type AdminRow, type AdminListKind } from "@/lib/adminData";
+import { supabase } from "@/lib/supabase";
 
 type Column = { label: string; key: string; money?: boolean; number?: boolean };
 
@@ -38,7 +33,7 @@ const configs: Record<string, Config> = {
       { label: "Joined", key: "joined" },
       { label: "Status", key: "status" },
     ],
-    rows: adminUsers,
+    rows: [],
     searchKeys: ["name", "email", "role", "status"],
     action: "none",
   },
@@ -53,7 +48,7 @@ const configs: Record<string, Config> = {
       { label: "Commission", key: "commission" },
       { label: "Status", key: "status" },
     ],
-    rows: adminOrganizers,
+    rows: [],
     searchKeys: ["name", "city", "status"],
     action: "approve",
   },
@@ -69,7 +64,7 @@ const configs: Record<string, Config> = {
       { label: "Revenue", key: "revenue", money: true },
       { label: "Status", key: "status" },
     ],
-    rows: adminEvents,
+    rows: [],
     searchKeys: ["title", "organizer", "city", "status"],
     action: "moderate",
   },
@@ -85,7 +80,7 @@ const configs: Record<string, Config> = {
       { label: "Provider", key: "provider" },
       { label: "Status", key: "status" },
     ],
-    rows: adminTransactions,
+    rows: [],
     searchKeys: ["reference", "buyer", "event", "status"],
     action: "none",
   },
@@ -101,7 +96,7 @@ const configs: Record<string, Config> = {
       { label: "Requested", key: "requested" },
       { label: "Status", key: "status" },
     ],
-    rows: adminPayouts,
+    rows: [],
     searchKeys: ["reference", "organizer", "status", "method"],
     action: "approve",
   },
@@ -117,7 +112,7 @@ const configs: Record<string, Config> = {
       { label: "Reason", key: "reason" },
       { label: "Status", key: "status" },
     ],
-    rows: adminRefunds,
+    rows: [],
     searchKeys: ["reference", "buyer", "event", "status"],
     action: "approve",
   },
@@ -128,24 +123,65 @@ export default function AdminListPage() {
   const kind = pathname.split("/")[2] || "users";
   const config = configs[kind] ?? configs.users;
   const { pushToast } = useApp();
+  const { user } = useAuth();
+  const [rows, setRows] = useState<AdminRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeRow, setActiveRow] = useState<Record<string, string | number> | null>(null);
   const [confirm, setConfirm] = useState<{ row: Record<string, string | number>; decision: "approve" | "reject" } | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    void fetchAdminRows(kind as AdminListKind).then((data) => {
+      if (active) setRows(data);
+    }).catch((err: unknown) => {
+      if (!active) return;
+      setRows([]);
+      setLoadError(err instanceof Error ? err.message : "Could not load these records.");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [kind, user?.id]);
+
   const filtered = useMemo(
     () =>
-      config.rows.filter((row) => {
+      rows.filter((row) => {
         const q = query.trim().toLowerCase();
         const matchesQuery = !q || config.searchKeys.some((key) => String(row[key]).toLowerCase().includes(q));
         const matchesStatus = statusFilter === "all" || String(row.status).toLowerCase() === statusFilter;
         return matchesQuery && matchesStatus;
       }),
-    [config, query, statusFilter]
+    [config, query, rows, statusFilter]
   );
 
-  const statuses = Array.from(new Set(config.rows.map((row) => String(row.status))));
+  const statuses = Array.from(new Set(rows.map((row) => String(row.status))));
+
+  const applyDecision = async (decision: "approve" | "reject") => {
+    if (!confirm) return;
+    const row = confirm.row;
+    let result: { error: { message: string } | null };
+    if (kind === "payouts") {
+      result = await supabase.from("organizer_withdrawals").update({ status: decision === "approve" ? "Processing" : "Rejected", reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq("id", String(row.id));
+    } else if (kind === "refunds") {
+      result = await supabase.from("ticket_refund_requests").update({ status: decision === "approve" ? "Approved" : "Rejected", reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq("id", String(row.id));
+    } else if (kind === "events") {
+      result = await supabase.from("events").update({ status: decision === "approve" ? "upcoming" : "cancelled" }).eq("id", String(row.id));
+    } else {
+      pushToast("This record does not support an approval action.", "warning");
+      return;
+    }
+    if (result.error) {
+      pushToast(result.error.message, "danger");
+      return;
+    }
+    setConfirm(null);
+    setRows(await fetchAdminRows(kind as AdminListKind));
+    pushToast(decision === "approve" ? "Record approved." : "Record rejected.", "success");
+  };
 
   return (
     <DashboardShell
@@ -178,12 +214,23 @@ export default function AdminListPage() {
               ))}
             </Select>
           </div>
-          <Button size="sm" variant="outline" onClick={() => pushToast(`${config.title} exported as CSV.`, "success")}>
+          <Button size="sm" variant="outline" onClick={() => {
+            const keys = config.columns.map((column) => column.key);
+            const lines = [config.columns.map((column) => column.label), ...filtered.map((row) => keys.map((key) => String(row[key] ?? "")))];
+            const body = lines.map((line) => line.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\r\n");
+            const url = URL.createObjectURL(new Blob([body], { type: "text/csv;charset=utf-8" }));
+            const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${kind}.csv`; anchor.click(); URL.revokeObjectURL(url);
+            pushToast(`${config.title} CSV exported.`, "success");
+          }}>
             <i className="ri-download-2-line" /> Export CSV
           </Button>
         </div>
       }
     >
+      {loading && <p className="py-8 text-center text-sm text-foreground-500">Loading {config.title.toLowerCase()}…</p>}
+      {loadError && <p role="alert" className="mb-3 text-sm text-accent-700">{loadError}</p>}
+      {!loading && !loadError && rows.length === 0 && <p className="py-8 text-center text-sm text-foreground-500">No {config.title.toLowerCase()} records yet.</p>}
+      {!loading && !loadError && rows.length > 0 && <>
       <div className="hidden lg:block">
         <TableWrap>
           <thead>
@@ -276,9 +323,7 @@ export default function AdminListPage() {
             <Button variant="ghost" onClick={() => setActiveRow(null)}>
               Close
             </Button>
-            <Button variant="outline" onClick={() => pushToast("Full audit trail opens in production.", "info")}>
-              Audit trail
-            </Button>
+            <Button variant="outline" onClick={() => setActiveRow(null)}>Close record</Button>
           </>
         }
       >
@@ -309,16 +354,14 @@ export default function AdminListPage() {
             <Button
               variant="danger"
               onClick={() => {
-                setConfirm(null);
-                pushToast("Decision recorded — requester notified.", "warning");
+                void applyDecision("reject");
               }}
             >
               Reject
             </Button>
             <Button
               onClick={() => {
-                setConfirm(null);
-                pushToast("Approved and recorded in the audit log.", "success");
+                void applyDecision("approve");
               }}
             >
               Approve
@@ -346,6 +389,7 @@ export default function AdminListPage() {
           </div>
         )}
       </Modal>
+      </>}
       <Toaster />
     </DashboardShell>
   );

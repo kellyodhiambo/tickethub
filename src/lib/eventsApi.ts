@@ -3,6 +3,7 @@ import type { EventItem, TicketTier } from "@/types";
 
 const EVENT_COLUMNS = [
   "id",
+  "status",
   "slug",
   "title",
   "description",
@@ -39,6 +40,7 @@ const EVENT_COLUMNS = [
 
 type EventRow = {
   id: string;
+  status?: string | null;
   slug: string;
   title: string;
   description: string | null;
@@ -107,6 +109,7 @@ export const mapEventRow = (row: EventRow): EventItem => {
 
   return {
     id: row.id,
+    status: row.status ?? "upcoming",
     slug: row.slug,
     title: row.title,
     category: row.category ?? "Concerts",
@@ -145,7 +148,18 @@ export async function fetchEvents(): Promise<EventItem[]> {
   const { data, error } = await supabase
     .from("events")
     .select(EVENT_COLUMNS)
-    .not("category", "is", null)
+    .in("status", ["upcoming", "ongoing"])
+    .order("date", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => mapEventRow(row as unknown as EventRow));
+}
+
+export async function fetchEventsByOrganizer(organizerId: string): Promise<EventItem[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(EVENT_COLUMNS)
+    .eq("organizer_id", organizerId)
     .order("date", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -157,6 +171,7 @@ export async function fetchEventBySlug(slug: string): Promise<EventItem | null> 
     .from("events")
     .select(EVENT_COLUMNS)
     .eq("slug", slug)
+    .in("status", ["upcoming", "ongoing"])
     .limit(1);
 
   if (error) throw new Error(error.message);

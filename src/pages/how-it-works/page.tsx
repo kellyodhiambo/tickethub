@@ -23,9 +23,9 @@ const attendeeSteps = [
   },
   {
     icon: "ri-smartphone-line",
-    title: "Pay with M-Pesa",
+    title: "Ticket payments",
     body: "Confirm the STK Push on your phone. Nothing is issued until the payment provider confirms the money actually moved.",
-    points: ["M-Pesa primary, card where enabled", "Instant confirmation receipt", "Failed payments release the seats"],
+    points: ["Payment provider setup is pending", "No ticket is issued before payment confirmation", "Unpaid checkout does not reserve inventory"],
   },
   {
     icon: "ri-ticket-2-line",
@@ -105,7 +105,7 @@ const organizerSteps = [
   {
     icon: "ri-qr-scan-2-line",
     title: "Scan, settle, withdraw",
-    body: "Invite scanner-only gate staff, run the door, then withdraw your allocation to an eligible M-Pesa number or bank account.",
+    body: "Invite scanner-only gate staff and run the door. Payouts will open after the settlement provider is connected.",
   },
 ];
 
@@ -176,9 +176,8 @@ export default function HowItWorksPage() {
             <span className="block italic text-white/60">“I’m inside the gate.”</span>
           </h1>
           <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-white/70 sm:text-base">
-            Dala Tickets runs the whole night out: discovery, M-Pesa payment, a QR ticket you actually
-            own, and a gate scanner that refuses duplicates. Organizers get the same rails plus
-            verification, commission transparency and payouts.
+            Dala Tickets provides event discovery, ticket management and gate scanning. Ticket payment
+            collection and payouts will be available after the provider APIs are connected.
           </p>
           <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
             <Link

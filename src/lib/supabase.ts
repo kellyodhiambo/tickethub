@@ -10,6 +10,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
   auth: {
+    // Keep this app's persisted session separate from any other app that uses
+    // the same Supabase project on the same browser origin.
+    storageKey: "tickethub-auth-token",
     persistSession: true,
     autoRefreshToken: true,
     flowType: "pkce",
