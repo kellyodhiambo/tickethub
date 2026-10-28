@@ -12,6 +12,9 @@ import { useApp } from "@/store/AppStore";
 
 type Stage = "details" | "payment" | "pending" | "success" | "failed";
 
+const checkoutTestMode =
+  import.meta.env.DEV || import.meta.env.VITE_PUBLIC_CHECKOUT_TEST_MODE === "true";
+
 export default function CheckoutPage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
@@ -34,6 +37,7 @@ export default function CheckoutPage() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [method, setMethod] = useState<"mpesa" | "card">("mpesa");
   const [failure, setFailure] = useState("");
+  const [testPaymentCompleted, setTestPaymentCompleted] = useState(false);
 
   const subtotal = (tier?.price ?? 0) * quantity;
   const serviceFee = isFree ? 0 : Math.round(subtotal * 0.02);
@@ -96,6 +100,12 @@ export default function CheckoutPage() {
     setStage("failed");
   };
 
+  const simulatePayment = () => {
+    if (!checkoutTestMode) return;
+    setTestPaymentCompleted(true);
+    setStage("success");
+  };
+
   return (
     <PublicLayout>
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 md:py-10">
@@ -132,7 +142,9 @@ export default function CheckoutPage() {
             <div className="mb-4 rounded-card border border-primary-200 bg-primary-50 px-4 py-3">
               <p className="flex items-start gap-2 text-[11px] leading-relaxed text-primary-900">
                 <i className="ri-information-fill mt-0.5" />
-                Preview only. Kingdom payment collection and ticket issuance are not connected yet. No payment or ticket can be completed here.
+                {checkoutTestMode
+                  ? "Test mode is enabled. You can simulate the checkout steps, but no payment, order, or ticket will be created."
+                  : "Preview only. Kingdom payment collection and ticket issuance are not connected yet. No payment or ticket can be completed here."}
               </p>
             </div>
 
@@ -142,11 +154,12 @@ export default function CheckoutPage() {
                   <i className="ri-checkbox-circle-fill text-2xl" />
                 </span>
                 <h2 className="mt-4 text-xl font-bold text-foreground-950">
-                  {isFree ? "Registration confirmed" : "Payment confirmed"}
+                  {testPaymentCompleted ? "Test checkout complete" : isFree ? "Registration confirmed" : "Payment confirmed"}
                 </h2>
                 <p className="mt-1.5 text-sm text-foreground-700">
-                  {quantity} {tier.name} ticket{quantity > 1 ? "s" : ""} for {event.title} have been
-                  issued to {email}. Your QR codes are ready in My Tickets.
+                  {testPaymentCompleted
+                    ? `The test flow accepted ${quantity} ${tier.name} ticket${quantity > 1 ? "s" : ""} for ${event.title}. This simulation did not charge you, save an order, or issue tickets.`
+                    : `${quantity} ${tier.name} ticket${quantity > 1 ? "s" : ""} for ${event.title} have been issued to ${email}. Your QR codes are ready in My Tickets.`}
                 </p>
                 <dl className="mt-4 grid gap-2 rounded-md border border-accent-200 bg-background-50 p-3 text-xs sm:grid-cols-2">
                   <div>
@@ -159,22 +172,32 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <dt className="text-foreground-500">Delivery</dt>
-                    <dd className="font-bold text-foreground-950">In-app wallet + email</dd>
+                    <dd className="font-bold text-foreground-950">
+                      {testPaymentCompleted ? "No ticket issued (test)" : "In-app wallet + email"}
+                    </dd>
                   </div>
                 </dl>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <Button onClick={() => navigate("/tickets")}>
-                    <i className="ri-ticket-2-line" /> Open my tickets
-                  </Button>
-                  <Button variant="outline" onClick={() => navigate(`/events/${event.slug}`)}>
-                    Back to event
-                  </Button>
-                </div>
-                <StayReminder
-                  className="mt-4"
-                  eventTitle={event.title}
-                  eventCity={event.city}
-                />
+                {testPaymentCompleted ? (
+                  <div className="mt-4 rounded-md border border-primary-200 bg-primary-50 p-3 text-xs text-primary-900">
+                    Test result only. There is no ticket to open or scan.
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <Button onClick={() => navigate("/tickets")}>
+                        <i className="ri-ticket-2-line" /> Open my tickets
+                      </Button>
+                      <Button variant="outline" onClick={() => navigate(`/events/${event.slug}`)}>
+                        Back to event
+                      </Button>
+                    </div>
+                    <StayReminder
+                      className="mt-4"
+                      eventTitle={event.title}
+                      eventCity={event.city}
+                    />
+                  </>
+                )}
               </div>
             ) : (
               <div className="rounded-card border border-background-200 bg-background-50 p-4 md:p-5">
@@ -355,6 +378,18 @@ export default function CheckoutPage() {
                             <i className="ri-lock-2-line" /> Pay {formatKsh(total)}
                           </>
                         )}
+                      </Button>
+                    )}
+                    {checkoutTestMode && method === "mpesa" && (
+                      <Button
+                        block
+                        size="lg"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={simulatePayment}
+                        disabled={stage === "pending"}
+                      >
+                        Continue without STK Push (test only)
                       </Button>
                     )}
                     <p className="mt-2 text-center text-[10px] text-foreground-500">

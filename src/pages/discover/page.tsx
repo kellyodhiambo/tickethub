@@ -6,7 +6,7 @@ import EventCard from "@/components/feature/EventCard";
 import { Badge, Button, EmptyState, Select } from "@/components/base/ui";
 import { DataError, DataLoading } from "@/components/feature/DataStates";
 import { eventCategories, cities } from "@/mocks/events";
-import { useEvents } from "@/hooks/useEvents";
+import { usePaginatedEvents } from "@/hooks/useEvents";
 import { cn } from "@/lib/helpers";
 
 const sortOptions = [
@@ -18,7 +18,7 @@ const sortOptions = [
 ];
 
 export default function DiscoverPage() {
-  const { events, loading, error, reload } = useEvents();
+  const { events, loading, error, reload, hasMore, loadingMore, loadMore } = usePaginatedEvents();
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [category, setCategory] = useState(params.get("category") ?? "");
@@ -99,7 +99,7 @@ export default function DiscoverPage() {
                 Find something worth leaving the house for
               </h1>
               <p className="mt-1.5 max-w-xl text-[12.5px] text-foreground-600 md:mt-2 md:text-sm">
-                {filtered.length} events across Kenya. Filter by city, date, category and price —
+                {filtered.length} matching events loaded{hasMore ? " so far" : ""}. Filter by city, date, category and price —
                 then check out in under a minute.
               </p>
             </div>
@@ -284,9 +284,9 @@ export default function DiscoverPage() {
           {!loading && !error && filtered.length === 0 ? (
             <EmptyState
               icon="ri-search-line"
-              title="No events match those filters"
-              description="Try removing a filter, searching a different city, or browsing everything happening this month."
-              action={<Button onClick={resetAll}>Reset filters</Button>}
+              title={hasMore ? "No matches in this batch" : "No events match those filters"}
+              description={hasMore ? "More events are available. Load the next batch or adjust your filters." : "Try removing a filter, searching a different city, or browsing everything happening this month."}
+              action={hasMore ? <Button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more events"}</Button> : <Button onClick={resetAll}>Reset filters</Button>}
             />
           ) : null}
           {!loading && !error && filtered.length > 0 && (
@@ -303,6 +303,10 @@ export default function DiscoverPage() {
                 {visible < filtered.length ? (
                   <Button variant="outline" onClick={() => setVisible((value) => value + 6)}>
                     Load more events
+                  </Button>
+                ) : hasMore ? (
+                  <Button variant="outline" onClick={() => { setVisible((value) => value + 24); void loadMore(); }} disabled={loadingMore}>
+                    {loadingMore ? "Loading…" : "Load more events"}
                   </Button>
                 ) : (
                   <Badge tone="neutral">You have seen every match</Badge>

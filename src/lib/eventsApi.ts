@@ -145,14 +145,58 @@ export const mapEventRow = (row: EventRow): EventItem => {
 };
 
 export async function fetchEvents(): Promise<EventItem[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select(EVENT_COLUMNS)
-    .in("status", ["upcoming", "ongoing"])
-    .order("date", { ascending: true });
+  if (import.meta.env.DEV) {
+    const { data, error } = await supabase
+      .from("events")
+      .select(EVENT_COLUMNS)
+      .in("status", ["upcoming", "ongoing"])
+      .order("date", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => mapEventRow(row as unknown as EventRow));
+  }
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapEventRow(row as unknown as EventRow));
+  const response = await fetch("/api/events", { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Could not load events right now.");
+  const body = (await response.json()) as { events?: EventRow[] };
+  return (body.events ?? []).map(mapEventRow);
+}
+
+export async function fetchEventsPage(offset: number): Promise<{
+  events: EventItem[];
+  hasMore: boolean;
+  nextOffset: number;
+}> {
+  if (import.meta.env.DEV) {
+    const { data, error } = await supabase
+      .from("events")
+      .select(EVENT_COLUMNS)
+      .in("status", ["upcoming", "ongoing"])
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + 24);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    return {
+      events: rows.slice(0, 24).map((row) => mapEventRow(row as unknown as EventRow)),
+      hasMore: rows.length > 24,
+      nextOffset: offset + 24,
+    };
+  }
+
+  const response = await fetch(`/api/events?offset=${encodeURIComponent(offset)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Could not load more events right now.");
+  const body = (await response.json()) as {
+    events?: EventRow[];
+    hasMore?: boolean;
+    nextOffset?: number;
+  };
+  return {
+    events: (body.events ?? []).map(mapEventRow),
+    hasMore: Boolean(body.hasMore),
+    nextOffset: Number(body.nextOffset ?? offset),
+  };
 }
 
 export async function fetchEventsByOrganizer(organizerId: string): Promise<EventItem[]> {
@@ -167,15 +211,24 @@ export async function fetchEventsByOrganizer(organizerId: string): Promise<Event
 }
 
 export async function fetchEventBySlug(slug: string): Promise<EventItem | null> {
-  const { data, error } = await supabase
-    .from("events")
-    .select(EVENT_COLUMNS)
-    .eq("slug", slug)
-    .in("status", ["upcoming", "ongoing"])
-    .limit(1);
+  if (import.meta.env.DEV) {
+    const { data, error } = await supabase
+      .from("events")
+      .select(EVENT_COLUMNS)
+      .eq("slug", slug)
+      .in("status", ["upcoming", "ongoing"])
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const row = (data ?? [])[0];
+    return row ? mapEventRow(row as unknown as EventRow) : null;
+  }
 
-  if (error) throw new Error(error.message);
-  const row = (data ?? [])[0];
+  const response = await fetch(`/api/events?slug=${encodeURIComponent(slug)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Could not load this event right now.");
+  const body = (await response.json()) as { events?: EventRow[] };
+  const row = body.events?.[0];
   return row ? mapEventRow(row as unknown as EventRow) : null;
 }
 

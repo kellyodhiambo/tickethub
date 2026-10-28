@@ -185,6 +185,7 @@ export default function OrganizerEventsPage() {
         <div className="space-y-2.5">
           {filtered.map((event) => {
             const status = statuses[event.id];
+            const hasPublicPage = ["upcoming", "ongoing"].includes(event.status);
             const soldPercent = Math.round((event.ticketsSold / event.capacity) * 100);
             return (
               <Card key={event.id} className="p-3">
@@ -221,11 +222,22 @@ export default function OrganizerEventsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5 md:flex-col md:items-end">
-                    <Link to={`/events/${event.slug}`}>
-                      <Button size="sm" variant="outline">
-                        <i className="ri-external-link-line" /> Public page
+                    {hasPublicPage ? (
+                      <Link to={`/events/${event.slug}`}>
+                        <Button size="sm" variant="outline">
+                          <i className="ri-external-link-line" /> Public page
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        title={event.status === "draft" ? "This event has no public page until it is published." : "This event is not currently public."}
+                      >
+                        <i className="ri-external-link-line" /> {event.status === "draft" ? "Draft · not public" : "Page unavailable"}
                       </Button>
-                    </Link>
+                    )}
                     <Button size="sm" variant="ghost" disabled title="Event editing is not available yet"><i className="ri-edit-line" /> Edit</Button>
                     <div className="flex gap-1">
                       <button
