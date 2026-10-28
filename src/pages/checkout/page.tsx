@@ -9,17 +9,17 @@ import { tierTheme } from "@/lib/tierTheme";
 import { useEvent } from "@/hooks/useEvents";
 import { DataError, DataLoading } from "@/components/feature/DataStates";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/store/AuthProvider";
 
 type Stage = "details" | "payment" | "pending" | "success" | "failed";
-
-const checkoutTestMode =
-  import.meta.env.DEV || import.meta.env.VITE_PUBLIC_CHECKOUT_TEST_MODE === "true";
 
 export default function CheckoutPage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { pushToast } = useApp();
+  const { isAdmin } = useAuth();
+  const checkoutTestMode = import.meta.env.DEV || isAdmin;
 
   const { event, loading, error, reload } = useEvent(slug);
   const tier = event?.tiers.find((item) => item.id === params.get("tier")) ?? event?.tiers[0];
@@ -367,6 +367,10 @@ export default function CheckoutPage() {
                       <Button block size="lg" className="mt-4" disabled>
                         Card payments unavailable
                       </Button>
+                    ) : checkoutTestMode ? (
+                      <Button block size="lg" className="mt-4" onClick={simulatePayment} disabled={stage === "pending"}>
+                        <i className="ri-flask-line" /> Continue without STK Push (test only)
+                      </Button>
                     ) : (
                       <Button block size="lg" className="mt-4" onClick={payWithMpesa} disabled={stage === "pending"}>
                         {stage === "pending" ? (
@@ -378,18 +382,6 @@ export default function CheckoutPage() {
                             <i className="ri-lock-2-line" /> Pay {formatKsh(total)}
                           </>
                         )}
-                      </Button>
-                    )}
-                    {checkoutTestMode && method === "mpesa" && (
-                      <Button
-                        block
-                        size="lg"
-                        variant="outline"
-                        className="mt-2"
-                        onClick={simulatePayment}
-                        disabled={stage === "pending"}
-                      >
-                        Continue without STK Push (test only)
                       </Button>
                     )}
                     <p className="mt-2 text-center text-[10px] text-foreground-500">
