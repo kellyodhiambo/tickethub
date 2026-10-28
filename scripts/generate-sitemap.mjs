@@ -91,7 +91,10 @@ async function writeSnapshot(route, title, description, content, schema, image, 
   const destination = path.join(outputDirectory, relativePath);
   await mkdir(path.dirname(destination), { recursive: true });
   const html = metadataHtml({ title, description, route, image, schema, robots })
-    .replace('<div id="root"></div>', `<div id="root">${content}</div>`);
+    // Keep SEO fallback content available when JavaScript is disabled, but
+    // never put it in React's mount node: createRoot replaces that node's
+    // contents after the browser has already painted them.
+    .replace('<div id="root"></div>', `<div id="root"></div><noscript>${content}</noscript>`);
   await writeFile(destination, html, "utf8");
 }
 
