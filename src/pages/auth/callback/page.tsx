@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/base/ui";
 import { BrandMark } from "@/components/feature/PublicLayout";
-import { validateOrdinaryPostAuthNext } from "@/lib/auth";
+import { OAUTH_NEXT_STORAGE_KEY, validateOrdinaryPostAuthNext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 
 export default function AuthCallbackPage() {
@@ -17,7 +17,14 @@ export default function AuthCallbackPage() {
 
     const run = async () => {
       const code = params.get("code");
-      const next = params.get("next");
+      let storedNext: string | null = null;
+      try {
+        storedNext = window.sessionStorage.getItem(OAUTH_NEXT_STORAGE_KEY);
+        window.sessionStorage.removeItem(OAUTH_NEXT_STORAGE_KEY);
+      } catch {
+        // The callback query can still supply a safe next path.
+      }
+      const next = params.get("next") ?? storedNext;
 
       try {
         if (!code) {

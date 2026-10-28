@@ -1,4 +1,5 @@
 export const AUTH_DEFAULT_PATH = "/account";
+export const OAUTH_NEXT_STORAGE_KEY = "tickethub-oauth-next";
 
 const prefix = (() => {
   const base = typeof __BASE_PATH__ === "string" ? __BASE_PATH__ : "/";

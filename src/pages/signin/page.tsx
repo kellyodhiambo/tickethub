@@ -4,9 +4,17 @@ import { Button, Input, Label } from "@/components/base/ui";
 import AuthShell from "@/components/feature/AuthShell";
 import VerifyCodeForm from "@/components/feature/VerifyCodeForm";
 import { Toaster } from "@/components/feature/Toaster";
-import { authCallbackUrl, describeAuthError, validateOrdinaryPostAuthNext } from "@/lib/auth";
+import { authCallbackUrl, describeAuthError, OAUTH_NEXT_STORAGE_KEY, validateOrdinaryPostAuthNext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/store/AuthProvider";
+
+function clearStoredOAuthNext() {
+  try {
+    window.sessionStorage.removeItem(OAUTH_NEXT_STORAGE_KEY);
+  } catch {
+    // Ignore unavailable browser storage.
+  }
+}
 
 export default function SignInPage() {
   const navigate = useNavigate();
@@ -58,13 +66,21 @@ export default function SignInPage() {
     setBusy(true);
     setError(null);
     try {
-      const suffix = destination !== "/account" ? `?next=${encodeURIComponent(destination)}` : "";
+      try {
+        window.sessionStorage.setItem(OAUTH_NEXT_STORAGE_KEY, destination);
+      } catch {
+        // OAuth can still complete if browser storage is unavailable.
+      }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${authCallbackUrl}${suffix}` },
+        options: { redirectTo: authCallbackUrl },
       });
-      if (oauthError) setError(describeAuthError(oauthError.message));
+      if (oauthError) {
+        clearStoredOAuthNext();
+        setError(describeAuthError(oauthError.message));
+      }
     } catch (err) {
+      clearStoredOAuthNext();
       setError(describeAuthError(err instanceof Error ? err.message : "Google sign-in is unavailable."));
     } finally {
       setBusy(false);
