@@ -41,6 +41,7 @@ export default function CreateEventPage() {
   const navigate = useNavigate();
   const { pushToast } = useApp();
   const { user, profile } = useAuth();
+  const canPublish = Boolean(profile?.verified);
   const [step, setStep] = useState(1);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -164,6 +165,7 @@ export default function CreateEventPage() {
       }
       if (!coverImage) throw new Error("The poster did not finish uploading. Please try again.");
 
+      const publishNow = mode === "publish" && canPublish;
       const created = await createEvent({
         title: form.title,
         category: form.category,
@@ -190,16 +192,18 @@ export default function CreateEventPage() {
         cancellation: policy.cancellation,
         ageLimit: policy.age,
         requirements: policy.requirements,
-        status: mode === "publish" ? "upcoming" : "draft",
+        status: publishNow ? "upcoming" : "draft",
       });
 
       pushToast(
-        mode === "publish"
+        publishNow
           ? "Event published — your poster is live on the marketplace and on every ticket."
-          : "Draft saved with your poster. Publish whenever you are ready.",
+          : mode === "publish"
+            ? "Event draft saved. An admin must verify your organizer account before it can be published."
+            : "Draft saved with your poster. Publish whenever you are ready.",
         "success"
       );
-      navigate(mode === "publish" ? `/events/${created.slug}` : "/organizer/events");
+      navigate(publishNow ? `/events/${created.slug}` : "/organizer/events");
     } catch (err) {
       pushToast(err instanceof Error ? err.message : "Could not save the event. Please try again.", "danger");
     } finally {
@@ -213,7 +217,7 @@ export default function CreateEventPage() {
       nav={organizerNav}
       mobileNav={organizerMobileNav}
       userName="DalaLive Events"
-      userRole="Verified organizer · Kisumu"
+      userRole={canPublish ? "Verified organizer" : "Organizer · verification pending"}
       initials="DL"
       title="Create event"
       description="Guided setup — publish in five short steps"
@@ -264,7 +268,7 @@ export default function CreateEventPage() {
                     </div>
                     <div>
                       <Label htmlFor="organizer">Organizer</Label>
-                      <Input id="organizer" value="DalaLive Events (verified)" readOnly className="bg-background-100" />
+                      <Input id="organizer" value={profile?.full_name || profile?.email || "Organizer"} readOnly className="bg-background-100" />
                     </div>
                   </div>
                   <div>
@@ -557,6 +561,12 @@ export default function CreateEventPage() {
                     </div>
                   )}
 
+                  {!canPublish && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+                      Your organizer account is awaiting admin verification. You can save this event as a draft now; it will not appear in the marketplace until your account is verified.
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <Button block onClick={() => publish("publish")} disabled={saving}>
                       {saving ? (
@@ -565,7 +575,7 @@ export default function CreateEventPage() {
                         </>
                       ) : (
                         <>
-                          <i className="ri-send-plane-line" /> Publish event
+                          <i className="ri-send-plane-line" /> {canPublish ? "Publish event" : "Save draft for review"}
                         </>
                       )}
                     </Button>
