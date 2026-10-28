@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
-import { DataError, DataLoading } from "@/components/feature/DataStates";
+import { DataError } from "@/components/feature/DataStates";
 import { useEvents } from "@/hooks/useEvents";
 import { usePlatformStats } from "@/hooks/usePlatformStats";
 import { formatCompactStat } from "@/lib/statsApi";
@@ -59,7 +59,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <PublicLayout>
-        <DataLoading />
+        <HomeLoadingSkeleton />
       </PublicLayout>
     );
   }
@@ -134,5 +134,36 @@ export default function HomePage() {
       <CtaBand />
       <Toaster />
     </PublicLayout>
+  );
+}
+
+function HomeLoadingSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading TicketHub" className="animate-pulse">
+      <section className="min-h-[430px] bg-foreground-950 px-4 py-12 md:min-h-[520px] md:px-6 md:py-20">
+        <div className="mx-auto flex w-full max-w-[1400px] flex-col justify-between gap-12">
+          <div className="max-w-2xl space-y-4">
+            <div className="h-4 w-44 rounded-full bg-white/15" />
+            <div className="h-10 w-4/5 rounded-md bg-white/15 md:h-14" />
+            <div className="h-4 w-3/5 rounded bg-white/10" />
+            <div className="h-4 w-2/5 rounded bg-white/10" />
+            <div className="flex gap-2 pt-2">
+              <div className="h-10 w-32 rounded-md bg-white/20" />
+              <div className="h-10 w-36 rounded-md bg-white/10" />
+            </div>
+          </div>
+          <div className="h-12 w-full rounded-lg bg-white/10" />
+        </div>
+      </section>
+      <div className="mx-auto grid max-w-[1400px] grid-cols-2 gap-5 px-4 py-6 md:grid-cols-4 md:px-6">
+        {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-10 rounded bg-background-100" />)}
+      </div>
+      <section className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">
+        <div className="mb-5 h-7 w-56 rounded bg-background-100" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="aspect-[4/5] rounded-card bg-background-100" />)}
+        </div>
+      </section>
+    </div>
   );
 }
