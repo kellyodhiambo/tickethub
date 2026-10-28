@@ -185,7 +185,7 @@ export default function OrganizerEventsPage() {
         <div className="space-y-2.5">
           {filtered.map((event) => {
             const status = statuses[event.id];
-            const hasPublicPage = ["upcoming", "ongoing"].includes(event.status);
+            const hasPublicPage = event.status === "upcoming" || event.status === "ongoing";
             const soldPercent = Math.round((event.ticketsSold / event.capacity) * 100);
             return (
               <Card key={event.id} className="p-3">
