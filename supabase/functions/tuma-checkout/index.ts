@@ -59,6 +59,13 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentAttempts, error: rateLimitError } = await admin.from("ticket_payment_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("buyer_phone", phone).gte("created_at", since);
+    if (rateLimitError) throw new Error("Could not validate checkout. Please retry shortly.");
+    if ((recentAttempts ?? 0) >= 5) return json({ error: "Too many payment prompts for this phone. Please wait and try again later." }, 429);
+
     const { data: event, error: eventError } = await admin.from("events")
       .select("id,title,status,ticket_tiers,capacity,tickets_sold")
       .eq("slug", eventSlug).maybeSingle();
