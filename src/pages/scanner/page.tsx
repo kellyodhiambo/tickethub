@@ -359,14 +359,29 @@ export default function ScannerPage() {
                   <div className="absolute bottom-6 left-6 h-10 w-10 rounded-bl-lg border-b-2 border-l-2 border-white" />
                   <div className="absolute bottom-6 right-6 h-10 w-10 rounded-br-lg border-b-2 border-r-2 border-white" />
                   <div className="absolute inset-x-10 h-0.5 animate-pulse bg-white/70" style={{ top: "50%" }} />
-                  {!cameraActive && <div className="px-8 text-center">
+                  {!cameraActive && <div className="z-10 px-8 text-center">
                     <i className="ri-qr-scan-2-line text-3xl text-white/70" />
                     <p className="mt-2 text-[11px] font-semibold text-white">
                       Camera scanner is ready
                     </p>
-                    <p className="mt-1 text-[10px] leading-relaxed text-white/40">
+                    <p className="mt-1 text-[10px] leading-relaxed text-white/55">
                       Aim the rear camera at a Dala Tickets QR code, or enter its ticket code manually.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!online) {
+                          setCameraError("Reconnect before scanning tickets.");
+                          return;
+                        }
+                        setCameraError(null);
+                        setCameraReady(false);
+                        setCameraActive(true);
+                      }}
+                      className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-btn bg-white px-5 text-xs font-bold uppercase tracking-[0.08em] text-black shadow-lg hover:bg-white/85"
+                    >
+                      <i className="ri-camera-line text-base" /> Open camera
+                    </button>
                   </div>}
                   {cameraActive && <>
                     {!cameraReady && <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/65 px-8 text-center text-[11px] text-white">
@@ -397,7 +412,7 @@ export default function ScannerPage() {
                     }}
                     className="h-10 cursor-pointer whitespace-nowrap rounded-btn border border-white/25 text-[11px] font-bold uppercase tracking-[0.08em] text-white/80 transition-colors hover:bg-white/10"
                   >
-                    <i className={cn("mr-1", cameraActive ? "ri-stop-circle-line" : "ri-camera-line")} /> {cameraActive ? "Stop camera" : "Camera"}
+                    <i className={cn("mr-1", cameraActive ? "ri-stop-circle-line" : "ri-camera-line")} /> {cameraActive ? "Stop camera" : "Open camera"}
                   </button>
                 </div>
                 {cameraError && <p className="mt-2 rounded-md border border-white/20 bg-white/10 px-2.5 py-2 text-[10px] text-white/80">{cameraError}</p>}
