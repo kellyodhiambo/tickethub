@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
@@ -9,7 +9,7 @@ import { tierTheme } from "@/lib/tierTheme";
 import { useEvent } from "@/hooks/useEvents";
 import { DataError, DataLoading } from "@/components/feature/DataStates";
 import { useApp } from "@/store/AppStore";
-import { useAuth } from "@/store/AuthProvider";
+import { supabase } from "@/lib/supabase";
 
 type Stage = "details" | "payment" | "pending" | "success" | "failed";
 
@@ -18,8 +18,7 @@ export default function CheckoutPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { pushToast } = useApp();
-  const { isAdmin } = useAuth();
-  const checkoutTestMode = import.meta.env.DEV || isAdmin;
+  const checkoutTestMode = import.meta.env.DEV;
 
   const { event, loading, error, reload } = useEvent(slug);
   const tier = event?.tiers.find((item) => item.id === params.get("tier")) ?? event?.tiers[0];
@@ -38,6 +37,7 @@ export default function CheckoutPage() {
   const [method, setMethod] = useState<"mpesa" | "card">("mpesa");
   const [failure, setFailure] = useState("");
   const [testPaymentCompleted, setTestPaymentCompleted] = useState(false);
+  const [paymentAttempt, setPaymentAttempt] = useState<{ attemptId: string; statusToken: string } | null>(null);
 
   const subtotal = (tier?.price ?? 0) * quantity;
   const serviceFee = isFree ? 0 : Math.round(subtotal * 0.02);
@@ -46,6 +46,25 @@ export default function CheckoutPage() {
   const commission = Math.round(subtotal * 0.1);
 
   const attendeeFields = useMemo(() => Array.from({ length: quantity }), [quantity]);
+
+  useEffect(() => {
+    if (stage !== "pending" || !paymentAttempt) return;
+    let active = true;
+    const check = async () => {
+      const { data, error: statusError } = await supabase.functions.invoke("tuma-payment-status", {
+        body: paymentAttempt,
+      });
+      if (!active || statusError || !data) return;
+      if (data.status === "paid") setStage("success");
+      if (data.status === "failed") {
+        setFailure(data.message || "The M-Pesa payment was not completed. You can try again.");
+        setStage("failed");
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [stage, paymentAttempt]);
 
   if (loading) return <PublicLayout><DataLoading label="Loading checkout" /></PublicLayout>;
   if (error) return <PublicLayout><DataError message={error} onRetry={reload} /></PublicLayout>;
@@ -80,24 +99,39 @@ export default function CheckoutPage() {
       return;
     }
     if (isFree) {
-      completeOrder("Complimentary");
+      setFailure("Free ticket registration is not connected yet. No ticket has been issued.");
+      setStage("failed");
       return;
     }
     setStage("payment");
   };
 
-  const completeOrder = (_channel?: string) => {
-    setFailure(
-      isFree
-        ? "Free ticket registration is not connected yet. No ticket has been issued."
-        : "Kingdom ticket payments are not connected yet. No payment was collected and no ticket has been issued."
-    );
-    setStage("failed");
-  };
-
-  const payWithMpesa = () => {
-    setFailure("Kingdom ticket payments are not connected yet. No payment was collected and no ticket has been issued.");
-    setStage("failed");
+  const payWithMpesa = async () => {
+    if (isFree) {
+      setFailure("Free ticket registration is not connected yet. No ticket has been issued.");
+      setStage("failed");
+      return;
+    }
+    setFailure("");
+    setStage("pending");
+    const { data, error: paymentError } = await supabase.functions.invoke("tuma-checkout", {
+      body: {
+        eventSlug: event.slug,
+        tierId: tier.id,
+        quantity,
+        name,
+        email,
+        phone,
+        promo: promoApplied ? promo : "",
+        attendees: Array.from(document.querySelectorAll<HTMLInputElement>('input[name^="attendee_"]')).map((input) => input.value.trim()),
+      },
+    });
+    if (paymentError || !data?.success || !data?.attemptId || !data?.statusToken) {
+      setFailure(data?.error || paymentError?.message || "Could not start M-Pesa payment. Please try again.");
+      setStage("failed");
+      return;
+    }
+    setPaymentAttempt({ attemptId: data.attemptId, statusToken: data.statusToken });
   };
 
   const simulatePayment = () => {
@@ -144,7 +178,7 @@ export default function CheckoutPage() {
                 <i className="ri-information-fill mt-0.5" />
                 {checkoutTestMode
                   ? "Test mode is enabled. You can simulate the checkout steps, but no payment, order, or ticket will be created."
-                  : "Preview only. Kingdom payment collection and ticket issuance are not connected yet. No payment or ticket can be completed here."}
+                  : "Secure M-Pesa payments are processed by Tuma. Tickets are issued only after payment confirmation."}
               </p>
             </div>
 
@@ -304,7 +338,7 @@ export default function CheckoutPage() {
                           <i className="ri-smartphone-line" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-xs font-bold text-foreground-950">M-Pesa STK Push</span>
+                          <span className="block text-xs font-bold text-foreground-950">M-Pesa STK Push via Tuma</span>
                           <span className="block text-[10px] text-foreground-600">
                             A prompt is sent to your phone — enter your PIN to confirm
                           </span>
@@ -348,7 +382,7 @@ export default function CheckoutPage() {
                           <span className="absolute h-10 w-10 animate-pulse-ring rounded-full bg-primary-400/40" />
                           <i className="ri-smartphone-line relative text-xl text-primary-700" />
                         </div>
-                        <p className="mt-2 text-xs font-bold text-primary-900">Waiting for M-Pesa confirmation</p>
+                        <p className="mt-2 text-xs font-bold text-primary-900">Waiting for Tuma / M-Pesa confirmation</p>
                         <p className="mt-1 text-[11px] text-primary-800">
                           Check your phone for the STK Push prompt and enter your PIN. Do not close this
                           page.
