@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
 
   if (action !== "scan") return json({ error: "Unknown action." }, 400);
 
-  const code = String(body.qrCode ?? "").trim();
+  const code = String(body.qrCode ?? "").trim().toUpperCase().replace(/\s+/g, "");
   const gate = String(body.gate ?? staff?.gate ?? "Gate A — Main").trim();
   if (!code) {
     return json({ result: "invalid", reason: "No ticket code was read.", code: "" });

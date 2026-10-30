@@ -128,7 +128,7 @@ export default function ScannerPage() {
   }, [authLoading, authSession, load]);
 
   const runScan = async (code: string) => {
-    const trimmed = code.trim();
+    const trimmed = code.trim().toUpperCase().replace(/\s+/g, "");
     if (!trimmed) {
       setResult({ result: "invalid", code: "—", reason: "No ticket code was read.", at: nowStamp() });
       return;
@@ -403,7 +403,7 @@ export default function ScannerPage() {
                     onKeyDown={(event_) => {
                       if (event_.key === "Enter") void runScan(manual);
                     }}
-                    placeholder="DLA-8F42KD-VIP-01"
+                    placeholder="e.g. A1B2C3D4E5F6"
                     className="h-11 min-w-0 flex-1 rounded-md border border-white/20 bg-black px-3 text-sm uppercase text-white outline-none placeholder:text-white/30 focus:border-white/60"
                   />
                   <button
@@ -415,7 +415,7 @@ export default function ScannerPage() {
                   </button>
                 </div>
                 <p className="mt-2 text-[10px] leading-relaxed text-white/40">
-                  Codes are validated against live ticket records for {session?.event?.title ?? "your event"}.
+                  Enter the 12-character code printed below the QR. Codes are checked against live ticket records for {session?.event?.title ?? "your event"}.
                 </p>
               </div>
             </>
