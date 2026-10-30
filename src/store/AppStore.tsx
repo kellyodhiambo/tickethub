@@ -19,6 +19,7 @@ type AppState = {
   toggleFavorite: (id: string) => void;
   tickets: WalletTicket[];
   orders: OrderRecord[];
+  refreshPurchases: () => Promise<void>;
   scans: ScanEntry[];
   staff: StaffMember[];
   withdrawals: Withdrawal[];
@@ -59,6 +60,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
+
+  const refreshPurchases = useCallback(async () => {
+    if (!user?.id) {
+      setTickets([]);
+      setOrders([]);
+      return;
+    }
+    const [ticketResult, orderResult] = await Promise.all([
+      supabase.from("tickets").select("id,event_id,tier_name,qr_code,status,payment_status,payment_reference,order_reference,attendee,buyer_name,total_amount,price,created_at,gate,scanned_at,events(slug)")
+        .eq("user_id", user.id).in("payment_status", ["completed", "paid"]).not("qr_code", "is", null).order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,reference,event_id,buyer,phone,tier,quantity,total,commission,status,channel,created_at,events(slug)")
+        .eq("user_id", user.id).order("created_at", { ascending: false }),
+    ]);
+    if (!ticketResult.error) setTickets((ticketResult.data ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const event = row.events as { slug?: string } | null;
+      const state = String(row.status ?? "").toLowerCase();
+      return {
+        id: String(row.id), eventId: String(row.event_id), price: Number(row.total_amount ?? row.price ?? 0), code: String(row.qr_code),
+        orderReference: String(row.order_reference ?? row.payment_reference ?? ""),
+        eventSlug: String(event?.slug ?? row.event_id ?? ""), tier: String(row.tier_name ?? "General"),
+        attendee: String(row.attendee ?? row.buyer_name ?? "Ticket holder"),
+        status: state === "used" || Boolean(row.scanned_at) ? "Used" : state === "cancelled" ? "Cancelled" : "Valid",
+        issuedAt: String(row.created_at ?? "").slice(0, 10), gate: row.gate ? String(row.gate) : undefined,
+        scannedAt: row.scanned_at ? String(row.scanned_at) : undefined,
+      };
+    }));
+    if (!orderResult.error) setOrders((orderResult.data ?? []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const event = row.events as { slug?: string } | null;
+      const state = String(row.status ?? "pending").toLowerCase();
+      return {
+        id: String(row.id), reference: String(row.reference ?? row.id),
+        eventSlug: String(event?.slug ?? row.event_id ?? ""), buyer: String(row.buyer ?? ""),
+        phone: String(row.phone ?? ""), tier: String(row.tier ?? "General"), quantity: Number(row.quantity ?? 1),
+        total: Number(row.total ?? 0), commission: Number(row.commission ?? 0),
+        status: state === "paid" || state === "completed" ? "Paid" : state === "refunded" ? "Refunded" : state === "failed" ? "Failed" : "Pending",
+        channel: String(row.channel ?? ""), createdAt: String(row.created_at ?? "").slice(0, 16).replace("T", " "),
+      };
+    }));
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -237,6 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleFavorite,
       tickets,
       orders,
+      refreshPurchases,
       scans,
       staff,
       withdrawals,
@@ -256,6 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleFavorite,
       tickets,
       orders,
+      refreshPurchases,
       scans,
       staff,
       withdrawals,

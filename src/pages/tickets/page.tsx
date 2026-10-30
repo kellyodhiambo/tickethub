@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PublicLayout from "@/components/feature/PublicLayout";
 import { Toaster } from "@/components/feature/Toaster";
@@ -16,9 +16,10 @@ const tabs = [
 ];
 
 export default function MyTicketsPage() {
-  const { tickets, orders } = useApp();
+  const { tickets, orders, refreshPurchases } = useApp();
   const { events } = useEvents();
   const [tab, setTab] = useState("upcoming");
+  useEffect(() => { void refreshPurchases(); }, [refreshPurchases]);
   const attendedEventCount = new Set(tickets.filter((ticket) => ticket.status === "Used").map((ticket) => ticket.eventSlug)).size;
 
   const enriched = useMemo(
