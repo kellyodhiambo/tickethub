@@ -1,6 +1,6 @@
 # Tuma payments setup
 
-TicketHub sends M-Pesa STK Push requests from the `tuma-checkout` Supabase Edge Function. Tuma credentials stay in Supabase secrets; never add them to `.env`, frontend code, or Git.
+TicketHub sends M-Pesa STK Push requests from the `tuma-checkout` Supabase Edge Function. Tuma credentials stay in Supabase secrets; never add them to `.env`, frontend code, or Git. The function accepts both documented Tuma token response shapes (`token` and `data.token`).
 
 ## Merchant setup
 

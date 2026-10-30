@@ -121,7 +121,8 @@ Deno.serve(async (req) => {
       throw new Error("Could not reach Tuma. Please try again.");
     }
     const authJson = await authResponse.json().catch(() => ({}));
-    const bearer = authJson?.data?.token;
+    // Tuma's docs show both { token } and { data: { token } } response shapes.
+    const bearer = authJson?.data?.token ?? authJson?.token;
     if (!authResponse.ok || authJson?.success !== true || !bearer) {
       const message = String(authJson?.message || "Tuma authentication failed.");
       await failAttempt(message);
