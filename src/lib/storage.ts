@@ -2,7 +2,8 @@ import { supabase } from "@/lib/supabase";
 
 /** Public bucket that holds every event poster uploaded by organizers. */
 export const POSTER_BUCKET = "event-posters";
-export const POSTER_MAX_BYTES = 5 * 1024 * 1024;
+export const POSTER_MAX_BYTES = 2 * 1024 * 1024;
+const POSTER_MAX_INPUT_BYTES = 25 * 1024 * 1024;
 export const POSTER_ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
@@ -18,14 +19,14 @@ export function validatePoster(file: File): string | null {
   if (!ALLOWED_TYPES.includes(file.type)) {
     return "That file type is not supported. Upload a JPG, PNG, WebP or AVIF image.";
   }
-  if (file.size > POSTER_MAX_BYTES) {
-    return `That poster is ${formatFileSize(file.size)}. Please keep it under 5 MB.`;
+  if (file.size > POSTER_MAX_INPUT_BYTES) {
+    return `That source image is ${formatFileSize(file.size)}. Please choose an image under 25 MB so your browser can optimize it.`;
   }
   return null;
 }
 
 const POSTER_MAX_DIMENSION = 1920;
-const POSTER_TARGET_BYTES = 1.5 * 1024 * 1024;
+const POSTER_TARGET_BYTES = POSTER_MAX_BYTES;
 
 /** Resize and re-encode uploaded posters in the browser before they reach Storage. */
 async function compressPoster(file: File): Promise<File> {
@@ -37,21 +38,25 @@ async function compressPoster(file: File): Promise<File> {
   }
 
   try {
-    const scale = Math.min(1, POSTER_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Your browser could not prepare the poster for upload.");
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
     let compressed: Blob | null = null;
-    for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42]) {
-      compressed = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+    let scale = Math.min(1, POSTER_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    for (let resizePass = 0; resizePass < 6; resizePass += 1) {
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]) {
+        compressed = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+        if (compressed && compressed.size <= POSTER_TARGET_BYTES) break;
+      }
       if (compressed && compressed.size <= POSTER_TARGET_BYTES) break;
+      scale *= 0.8;
     }
     if (!compressed) throw new Error("Your browser could not compress this poster. Try a JPG or WebP image.");
-    if (compressed.size > POSTER_MAX_BYTES) throw new Error("This poster is still too large after compression. Please use a smaller image.");
+    if (compressed.size > POSTER_MAX_BYTES) throw new Error("Your browser could not reduce this poster enough to upload. Please try another image.");
 
     const baseName = file.name.replace(/\.[^.]+$/, "") || "event-poster";
     return new File([compressed], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });

@@ -96,8 +96,8 @@ export default function PosterUploader({ file, previewUrl, fallbackUrl, onSelect
             </span>
             <span className="text-xs font-bold text-foreground-950">Upload your event poster</span>
             <span className="max-w-xs text-[10.5px] leading-relaxed text-foreground-500">
-              Drag an image here or click to browse. JPG, PNG, WebP or AVIF up to 5 MB — portrait or
-              16:9 both work.
+              Drag an image here or click to browse. JPG, PNG, WebP or AVIF — images are optimized
+              automatically before upload. Portrait or 16:9 both work.
             </span>
           </button>
         )}
