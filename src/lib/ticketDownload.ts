@@ -4,6 +4,23 @@
  */
 
 async function capture(node: HTMLElement) {
+  await document.fonts?.ready;
+  let qr = node.querySelector("img[alt^='Scannable ticket QR code']") as HTMLImageElement | null;
+  for (let attempt = 0; attempt < 30 && (!qr || !qr.complete || qr.naturalWidth === 0); attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+    qr = node.querySelector("img[alt^='Scannable ticket QR code']") as HTMLImageElement | null;
+  }
+  if (!qr || !qr.complete || qr.naturalWidth === 0) {
+    throw new Error("The ticket QR code is not ready to export yet.");
+  }
+  const images = Array.from(node.querySelectorAll("img"));
+  await Promise.all(images.map(async (image) => {
+    if (!image.complete) await new Promise<void>((resolve) => {
+      image.addEventListener("load", () => resolve(), { once: true });
+      image.addEventListener("error", () => resolve(), { once: true });
+    });
+    if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
+  }));
   const { default: html2canvas } = await import("html2canvas-pro");
   return html2canvas(node, {
     scale: 2,

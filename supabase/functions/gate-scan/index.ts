@@ -93,8 +93,10 @@ Deno.serve(async (req) => {
     if (!eventId) {
       const { data: nextEvent } = await admin
         .from("events")
-        .select("id, title, slug, start_date, venue")
+        .select("id, title, slug, start_date, venue, tickets_sold")
         .eq("organizer_id", organizerId)
+        .in("status", ["upcoming", "ongoing"])
+        .order("tickets_sold", { ascending: false })
         .order("start_date", { ascending: true })
         .limit(1)
         .maybeSingle();
