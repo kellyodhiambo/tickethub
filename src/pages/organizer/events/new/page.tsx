@@ -7,7 +7,7 @@ import PosterUploader from "@/pages/organizer/events/new/components/PosterUpload
 import { cn, formatKsh } from "@/lib/helpers";
 import { createEvent } from "@/lib/eventsApi";
 import { uploadEventPoster, validatePoster } from "@/lib/storage";
-import { organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
+import { adminMobileNav, adminNav, organizerMobileNav, organizerNav } from "@/pages/organizer/nav";
 import { cities, eventCategories } from "@/mocks/events";
 import { useApp } from "@/store/AppStore";
 import { useAuth } from "@/store/AuthProvider";
@@ -40,8 +40,8 @@ const samplePosters = [
 export default function CreateEventPage() {
   const navigate = useNavigate();
   const { pushToast } = useApp();
-  const { user, profile } = useAuth();
-  const canPublish = Boolean(profile?.verified);
+  const { user, profile, isAdmin } = useAuth();
+  const canPublish = isAdmin || Boolean(profile?.verified);
   const [step, setStep] = useState(1);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -152,7 +152,7 @@ export default function CreateEventPage() {
       return;
     }
     if (!user) {
-      pushToast("Sign in as an organizer to save this event.", "danger");
+      pushToast("Sign in with an authorized account to save this event.", "danger");
       navigate("/signin");
       return;
     }
@@ -179,7 +179,7 @@ export default function CreateEventPage() {
         address: form.address,
         organizerId: user.id,
         organizerName: profile?.full_name || profile?.email || "Organizer",
-        verified: Boolean(profile?.verified),
+        verified: isAdmin || Boolean(profile?.verified),
         tiers: tiers.map((tier) => ({
           name: tier.name.trim() || "General",
           price: Number(tier.price || 0),
@@ -203,7 +203,7 @@ export default function CreateEventPage() {
             : "Draft saved with your poster. Publish whenever you are ready.",
         "success"
       );
-      navigate(publishNow ? `/events/${created.slug}` : "/organizer/events");
+      navigate(publishNow ? `/events/${created.slug}` : isAdmin ? "/admin/events" : "/organizer/events");
     } catch (err) {
       pushToast(err instanceof Error ? err.message : "Could not save the event. Please try again.", "danger");
     } finally {
@@ -213,12 +213,12 @@ export default function CreateEventPage() {
 
   return (
     <DashboardShell
-      variant="organizer"
-      nav={organizerNav}
-      mobileNav={organizerMobileNav}
-      userName="DalaLive Events"
-      userRole={canPublish ? "Verified organizer" : "Organizer · verification pending"}
-      initials="DL"
+      variant={isAdmin ? "admin" : "organizer"}
+      nav={isAdmin ? adminNav : organizerNav}
+      mobileNav={isAdmin ? adminMobileNav : organizerMobileNav}
+      userName={profile?.full_name || profile?.email || "DalaLive Events"}
+      userRole={isAdmin ? "Platform admin" : canPublish ? "Verified organizer" : "Organizer · verification pending"}
+      initials={isAdmin ? "PA" : "DL"}
       title="Create event"
       description="Guided setup — publish in five short steps"
     >

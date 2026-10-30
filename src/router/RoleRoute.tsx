@@ -3,7 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/store/AuthProvider";
 
 type RoleRouteProps = {
-  role: "admin" | "organizer" | "authenticated";
+  role: "admin" | "organizer" | "event_creator" | "authenticated";
   children: ReactNode;
 };
 
@@ -20,7 +20,7 @@ export default function RoleRoute({ role, children }: RoleRouteProps) {
     return <Navigate to={`/signin?next=${next}`} replace />;
   }
 
-  const allowed = role === "authenticated" || (role === "admin" ? isAdmin : isOrganizer);
+  const allowed = role === "authenticated" || (role === "admin" ? isAdmin : role === "event_creator" ? isAdmin || isOrganizer : isOrganizer);
   if (!allowed) return <Navigate to="/account" replace />;
 
   return children;

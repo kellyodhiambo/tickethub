@@ -39,6 +39,7 @@ import NotFound from "@/pages/NotFound";
 import RoleRoute from "@/router/RoleRoute";
 
 const organizerOnly = (element: React.ReactNode) => <RoleRoute role="organizer">{element}</RoleRoute>;
+const eventCreator = (element: React.ReactNode) => <RoleRoute role="event_creator">{element}</RoleRoute>;
 const adminOnly = (element: React.ReactNode) => <RoleRoute role="admin">{element}</RoleRoute>;
 
 const routes: RouteObject[] = [
@@ -63,7 +64,7 @@ const routes: RouteObject[] = [
   { path: "/organizer/apply", element: <RoleRoute role="authenticated"><OrganizerApplicationPage /></RoleRoute> },
   { path: "/organizer", element: organizerOnly(<OrganizerOverviewPage />) },
   { path: "/organizer/events", element: organizerOnly(<OrganizerEventsPage />) },
-  { path: "/organizer/events/new", element: organizerOnly(<CreateEventPage />) },
+  { path: "/organizer/events/new", element: eventCreator(<CreateEventPage />) },
   { path: "/organizer/orders", element: organizerOnly(<OrganizerOrdersPage />) },
   { path: "/organizer/attendees", element: organizerOnly(<AttendeesPage />) },
   { path: "/organizer/staff", element: organizerOnly(<GateStaffPage />) },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import DashboardShell from "@/components/feature/DashboardShell";
 import { Toaster } from "@/components/feature/Toaster";
 import { Badge, Button, Card, Modal, Select, TableWrap, Td, Th } from "@/components/base/ui";
@@ -119,6 +119,7 @@ const configs: Record<string, Config> = {
 };
 
 export default function AdminListPage() {
+  const navigate = useNavigate();
   const { pathname } = useLocation();
   const kind = pathname.split("/")[2] || "users";
   const config = configs[kind] ?? configs.users;
@@ -224,6 +225,9 @@ export default function AdminListPage() {
           }}>
             <i className="ri-download-2-line" /> Export CSV
           </Button>
+          {kind === "events" && <Button size="sm" onClick={() => navigate("/organizer/events/new")}>
+            <i className="ri-add-line" /> Create event
+          </Button>}
         </div>
       }
     >
