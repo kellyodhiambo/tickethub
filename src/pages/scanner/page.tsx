@@ -79,6 +79,7 @@ export default function ScannerPage() {
   const [summary, setSummary] = useState({ issued: 0, scanned: 0, remaining: 0 });
   const [busy, setBusy] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
@@ -200,12 +201,16 @@ export default function ScannerPage() {
     if (!cameraActive || !online || !session || !videoRef.current) return;
     let active = true;
     cameraResultHandledRef.current = false;
+    setCameraReady(false);
     setCameraError(null);
     const video = videoRef.current;
     void import("@zxing/browser").then(({ BrowserMultiFormatReader }) => {
       if (!active || !video) return;
       const reader = new BrowserMultiFormatReader();
-      return reader.decodeFromVideoDevice(undefined, video, (decoded, _error, controls) => {
+      return reader.decodeFromConstraints({
+        audio: false,
+        video: { facingMode: { ideal: "environment" } },
+      }, video, (decoded, _error, controls) => {
         scannerControlsRef.current = controls;
         if (!active || !decoded || busy || cameraResultHandledRef.current) return;
         cameraResultHandledRef.current = true;
@@ -215,8 +220,9 @@ export default function ScannerPage() {
     }).catch((cameraFailure: unknown) => {
       if (!active) return;
       setCameraActive(false);
+      setCameraReady(false);
       setCameraError(cameraFailure instanceof Error
-        ? `Camera could not start: ${cameraFailure.message}`
+        ? `Camera could not start: ${cameraFailure.message}. Check browser camera permission and try again.`
         : "Camera access failed. Allow camera access or enter the ticket code manually.");
     });
 
@@ -346,7 +352,7 @@ export default function ScannerPage() {
             <>
               <div className="relative overflow-hidden rounded-card border border-white/15 bg-white/[0.04] p-3">
                 <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md bg-black ring-1 ring-inset ring-white/10">
-                  <video ref={videoRef} className={cn("absolute inset-0 h-full w-full object-cover", cameraActive ? "block" : "hidden")} autoPlay muted playsInline />
+                  <video ref={videoRef} onPlaying={() => setCameraReady(true)} className={cn("absolute inset-0 h-full w-full object-cover", cameraActive ? "block" : "hidden")} autoPlay muted playsInline />
                   <div className="absolute inset-8 rounded-md border border-white/10" />
                   <div className="absolute left-6 top-6 h-10 w-10 rounded-tl-lg border-l-2 border-t-2 border-white" />
                   <div className="absolute right-6 top-6 h-10 w-10 rounded-tr-lg border-r-2 border-t-2 border-white" />
@@ -362,7 +368,12 @@ export default function ScannerPage() {
                       Aim the rear camera at a Dala Tickets QR code, or enter its ticket code manually.
                     </p>
                   </div>}
-                  {cameraActive && <div className="pointer-events-none absolute inset-8 rounded-md border-2 border-white/75" />}
+                  {cameraActive && <>
+                    {!cameraReady && <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/65 px-8 text-center text-[11px] text-white">
+                      <span><i className="ri-loader-4-line mr-1 animate-spin" /> Starting rear camera… allow camera access if prompted.</span>
+                    </div>}
+                    <div className="pointer-events-none absolute inset-8 z-20 rounded-md border-2 border-white/75" />
+                  </>}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
@@ -381,6 +392,7 @@ export default function ScannerPage() {
                         return;
                       }
                       setCameraError(null);
+                      setCameraReady(false);
                       setCameraActive((value) => !value);
                     }}
                     className="h-10 cursor-pointer whitespace-nowrap rounded-btn border border-white/25 text-[11px] font-bold uppercase tracking-[0.08em] text-white/80 transition-colors hover:bg-white/10"
